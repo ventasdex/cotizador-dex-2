@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DEX · Cotizador 2.0</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">D</div>
+      <div><strong>DEX</strong><span>Cotizador 2.0</span></div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="quote">✦ <span>Nueva cotización</span></button>
+      <button class="nav-item" data-action="catalog">▦ <span>Catálogo</span></button>
+      <button class="nav-item" data-action="library">▤ <span>Biblioteca DEX</span></button>
+      <button class="nav-item" data-action="history">◷ <span>Históricos</span></button>
+    </nav>
+    <div class="side-tip">
+      <b>DEXI sin costo</b>
+      <p>Busca temarios DEX y referencias de precio usando tus propios históricos. Sin API de pago.</p>
+    </div>
+    <div class="profile"><div class="profile-dot">DX</div><div><b>Equipo DEX</b><span>Ventas</span></div></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">COTIZACIONES</div>
+        <h1>Nueva propuesta</h1>
+        <p>Arma una cotización clara y lista para enviar.</p>
+      </div>
+      <div class="top-actions">
+        <button class="btn btn-dexi" id="openDexi">✦ DEXI</button>
+        <button class="btn btn-light" id="clearBtn">Limpiar</button>
+        <button class="btn btn-primary" id="previewBtn">Vista previa →</button>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="section-head"><span class="step">01</span><div><h2>Datos del cliente</h2><p>¿Para quién es esta propuesta?</p></div></div>
+      <div class="grid client-grid">
+        <label class="field span-2"><span>Cliente o empresa</span><input id="client" placeholder="Ej. Empresa automotriz" /></label>
+        <label class="field"><span>Contacto</span><input id="contact" placeholder="Nombre del contacto" /></label>
+        <label class="field"><span>WhatsApp</span><input id="whatsapp" placeholder="+52 477 000 0000" /></label>
+        <label class="field"><span>Correo</span><input id="email" type="email" placeholder="cliente@empresa.com" /></label>
+        <label class="field"><span>Vigencia</span><select id="validity"><option>15 días</option><option>30 días</option><option>45 días</option><option>60 días</option></select></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><span class="step">02</span><div><h2>Contenido de la propuesta</h2><p>Completa las páginas con la estructura comercial de DEX.</p></div></div>
+      <label class="field"><span>Título del curso o servicio</span><div class="inline"><input id="title" placeholder="Ej. AMEF AIAG & VDA" /><button class="mini-btn" id="findTemplate">Buscar en DEX</button></div></label>
+      <div id="templateHint" class="hint hidden"></div>
+
+      <div class="cover-box">
+        <div><b>Imagen de portada</b><p>Por ahora puedes subir una imagen. La generación con IA queda opcional para una fase posterior.</p></div>
+        <div class="cover-actions"><label class="upload-btn">＋ Subir imagen<input id="coverInput" type="file" accept="image/*" hidden></label><div id="coverPreview" class="cover-preview">Sin imagen</div></div>
+      </div>
+
+      <label class="field"><span>Presentación</span><textarea id="presentation" rows="4" placeholder="DEX México presenta un entrenamiento enfocado en..."></textarea></label>
+      <div class="grid two">
+        <label class="field"><span>Objetivos</span><textarea id="objectives" rows="5" placeholder="Los participantes desarrollarán conocimientos y herramientas para..."></textarea></label>
+        <label class="field"><span>Función / beneficio principal</span><textarea id="benefit" rows="5" placeholder="Este servicio permite optimizar recursos, mejorar..."></textarea></label>
+      </div>
+      <label class="field"><span>Dirigido a</span><textarea id="audience" rows="3" placeholder="Gerentes, supervisores, coordinadores y personal involucrado en..."></textarea></label>
+      <label class="field"><span>Desarrollo del tema</span><small>Usa el temario DEX completo o edítalo libremente.</small><textarea id="temario" class="big" rows="13" placeholder="MÓDULO I. Fundamentos\n- Tema...\n\nMÓDULO II. Aplicación práctica..."></textarea></label>
+      <label class="field"><span>Consideraciones</span><small>Una condición por línea.</small><textarea id="considerations" rows="7">El equipo profesional involucrado estará integrado por especialistas certificados y con experiencia en el tema.
+Se entregará material del curso a cada participante en formato definido por DEX México.
+Las fechas acordadas serán flexibles siempre que los cambios se notifiquen con al menos 15 días hábiles de anticipación.
+La presente cotización queda sujeta a las políticas publicadas en https://dexmexico.com/politicas.
+DEX México se compromete a mantener la confidencialidad de la información obtenida del cliente.</textarea></label>
+    </section>
+
+    <section class="card">
+      <div class="section-head row-between"><div class="head-inline"><span class="step">03</span><div><h2>Inversión</h2><p>Agrega servicios, duración y costos.</p></div></div><div class="section-actions"><button class="soft-btn" id="suggestPrice">✦ Sugerir precio</button><button class="soft-btn" id="addConcept">＋ Concepto libre</button></div></div>
+      <div id="priceHint" class="price-hint hidden"></div>
+      <div class="quick-catalog" id="quickCatalog"></div>
+      <div class="concept-table-wrap">
+        <table class="concept-table"><thead><tr><th>Servicio</th><th>Duración</th><th>Precio</th><th>Importe</th><th></th></tr></thead><tbody id="conceptRows"></tbody></table>
+        <div id="emptyConcepts" class="empty-state"><div>＋</div><b>Aún no hay conceptos</b><span>Elige un servicio del catálogo o agrega uno libre.</span></div>
+      </div>
+    </section>
+
+    <div class="bottom-grid">
+      <section class="card">
+        <div class="section-head"><span class="step">04</span><div><h2>Detalles finales</h2><p>Mensaje adicional para el cliente.</p></div></div>
+        <label class="field"><span>Notas de la propuesta</span><textarea id="notes" rows="7" placeholder="Incluye alcances, tiempos de entrega o condiciones especiales..."></textarea></label>
+      </section>
+      <section class="card summary-card">
+        <h2>Resumen</h2>
+        <div class="summary-row"><span>Subtotal</span><b id="subtotal">$0.00</b></div>
+        <div class="summary-row"><span>Descuento</span><label class="pct"><input id="discount" type="number" value="0" min="0" max="100"><span>%</span></label></div>
+        <div class="summary-row"><span>IVA</span><label class="pct"><input id="iva" type="number" value="16" min="0" max="100"><span>%</span></label></div>
+        <hr>
+        <div class="total-row"><span>Total</span><b id="total">$0.00</b></div>
+        <button class="btn btn-primary full" id="generateBtn">Generar propuesta</button>
+        <button class="btn btn-light full" id="saveDraft">Guardar borrador</button>
+        <small>PDF y Word editable se descargan desde la vista previa.</small>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal-backdrop hidden" id="modalBackdrop">
+    <div class="modal" id="genericModal"><button class="modal-close" id="modalClose">×</button><div id="modalBody"></div></div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

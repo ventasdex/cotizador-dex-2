@@ -1,0 +1,892 @@
+[
+  {
+    "nombre": "ABRAHAM COBOS HERNANDEZ",
+    "ciudad": "LEON",
+    "area": "RECURSOS HUMANOS  CALIDAD",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "MAX NAVARRO",
+    "ciudad": "LEON",
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "ABEL CONTRERAS FALCON",
+    "ciudad": "COAHUILA",
+    "area": "CALIDAD PRODUCCION",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "MARIA DE JESUS BERINO BARRAZA",
+    "ciudad": "COAHUILA",
+    "area": "CALIDAD",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "ANGEL ORLANDO MORALES GÓMEZ",
+    "ciudad": "LEON",
+    "area": "PRODUCCION CALIDAD",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "DIANA MUÑOZ APOLINAR",
+    "ciudad": "LEON",
+    "area": "CALIDAD PRODUCCION",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "JUAN ALBERTO VIELMA COVARRUBIAS",
+    "ciudad": "COAHUILA",
+    "area": "RECURSOS HUMANOS",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "CARLOS ENRIQUE LAHUD MARTINEZ",
+    "ciudad": null,
+    "area": "PRODUCCION",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "EDUARDO IBARRA RODRIGUEZ",
+    "ciudad": null,
+    "area": "CALIDAD",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "ENRIQUE VILLEGAS VACA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "FLORINDA ISABEL FIGUEROA ZAMORA",
+    "ciudad": "LEON",
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "FRANCISCO JAVIER QUIÑONES RIOS",
+    "ciudad": null,
+    "area": "LABORATORIOS",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "JOSE LUIS FUENTES GARCÍA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "JUAN CARLOS HERNANDEZ RAMÍREZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "JUAN ANTONIO SALCEDO FONSECA",
+    "ciudad": null,
+    "area": "PRODUCCION CALIDAD",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "MARIA TERESA CERÓN MENDÉZ",
+    "ciudad": null,
+    "area": "CALIDAD Y PRODUCCIÓN",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "NIDIA CITLALI CONTRERAS FALCON",
+    "ciudad": null,
+    "area": "RECURSOS HUMANOS",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 4,
+    "confianza": 4,
+    "promedio": 4
+  },
+  {
+    "nombre": "OMAR ABRAHAM RIOS MARTINEZ",
+    "ciudad": null,
+    "area": "PRODUCCION CALIDAD",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 5,
+    "promedio": 4
+  },
+  {
+    "nombre": "OSCAR GOMEZ GIACOMAN",
+    "ciudad": null,
+    "area": "CALIDAD",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "VANIA CONSUELO ACOSTA SARELLANO",
+    "ciudad": null,
+    "area": "RECURSOS HUMANOS",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "VICTOR GARCÍA ZERMEÑO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 4,
+    "confianza": 3,
+    "promedio": 3.5
+  },
+  {
+    "nombre": "YASMIN ADRIANA OROZCO RAMÍREZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "SERGIO HÉCTOR PEDROZA MORAN",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "NOE SOLIS HERNANDEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "JUAN CARLOS RAMON PEREZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 2,
+    "confianza": 3,
+    "promedio": 2.5
+  },
+  {
+    "nombre": "DEISY YASMIN FUNES AYALA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "LUZ GRACIELA HERNANDEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "MARIO DAGOBERTO DIAZ ORGAZ",
+    "ciudad": null,
+    "area": "CALIDAD Y METROLOGIA",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "ENRIQUE ALMONANCI",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "SONIA BERENICE PERALES ADRIAN",
+    "ciudad": null,
+    "area": "CALIDAD",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "JUAN HERNANDEZ MOLINA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "JUAN JOSE FERNANDEZ DELGADO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "HECTOR ENRIQUE SILVA ANDRADE",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "ANDREA KAREN MENDOZA HERNANDEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "RAFAEL BRISEÑO FUENTES",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "FEDERICO ANTILLON AMPARAN",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 5,
+    "promedio": 4
+  },
+  {
+    "nombre": "HECTOR ALONSO MORALES GOMEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "JESUS ARANA MARIN",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "ROBERTO CARLOS SALAZAR GONZALEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "FRANCISCO MARTÍN CAREAGA HERNÁNDEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 3,
+    "promedio": 4
+  },
+  {
+    "nombre": "ARTURO GUERRERO MARTINEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "GERARDO TAPIA ALONSO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 4,
+    "promedio": 4.5
+  },
+  {
+    "nombre": "PRISCILA NAYELY VARGAS SERRATOS",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 2,
+    "confianza": 2,
+    "promedio": 2
+  },
+  {
+    "nombre": "JESUS JORGE LAORRABAQUIO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 2,
+    "confianza": 2,
+    "promedio": 2
+  },
+  {
+    "nombre": "TANIA OCEGUERA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 4,
+    "promedio": 4.5
+  },
+  {
+    "nombre": "TOMAS LEONARDO TAPIA ALONSO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 3,
+    "promedio": 4
+  },
+  {
+    "nombre": "JOSE LUIS MORENO PANTOJA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "JULIO CESAR ORTEGA MEZA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "ESTHER STEVENSON VASQUEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "NAYELI ESCAMILLA MARTINEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "NORMA PATRICIA ALCAZAR VARA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "CARLOS ARTURO RUIZ SANTOYO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "VICTOR HUGO NAVARRO SILVA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "GERARDO DAVID HADAD ZARATE",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "JUAN DIEGO ESTRADA FUENTES",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "PAMELA FIGUEROA ALVAREZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "RENATA ALONSO EL ACHKAR",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "FRANCISCO FIDEL MACÍAS AGUILERA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "OSCAR ALI VAZQUEZ ZAMUDIO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "GABRIEL LUGO SILVA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "ADAN MORENO BECERRA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "OSCAR PAEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "CINTHIA ROBLES RENDON",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 4,
+    "promedio": 2
+  },
+  {
+    "nombre": "ANGEL GONZALEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "MIGUEL ANGEL HERNANDEZ (INVENTOR)",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "LUIS FERNANDO CABRERA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "MIGUEL JESUS GUTIERREZ BUENO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "MARIANA ZERMEÑO HERNANDEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "JAIME JAIME ADAME",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "CHRISTIAN ALEJANDRO RUIZ ARITMO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 2,
+    "promedio": 3.5
+  },
+  {
+    "nombre": "GILBERTO GARCÍA RODRÍGUEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 4,
+    "confianza": 4,
+    "promedio": 4
+  },
+  {
+    "nombre": "JUAN VALENTIN RAYA AGUILAR",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "GABRIELA AILED RAMIREZ RUIZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 4,
+    "confianza": 4,
+    "promedio": 4
+  },
+  {
+    "nombre": "FELIPE MIRANDA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 4,
+    "confianza": 3,
+    "promedio": 3.5
+  },
+  {
+    "nombre": "NOE DANIEL ORTEGA AGUILAR",
+    "ciudad": null,
+    "area": "CALIDAD PRODUCCIÓN",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "ROBERTO FIGUEROA ESCOGIDO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "JUANA MARINA HERNANDEZ IBARRA",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 3,
+    "promedio": 4
+  },
+  {
+    "nombre": "DEYDA KARINA QUIÑONEZ VILLEGAS",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 4,
+    "confianza": 5,
+    "promedio": 4.5
+  },
+  {
+    "nombre": "JUAN CARLOS MARTINEZ MAGDALENO",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 0,
+    "confianza": 0,
+    "promedio": 0
+  },
+  {
+    "nombre": "JUAN ALFREDO MORALES GOMEZ",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "JUANA MARIA MARTIN DEL CAMPO TORRES",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 4,
+    "confianza": 3,
+    "promedio": 3.5
+  },
+  {
+    "nombre": "MANUEL HUMBERTO MARTINEZ SALAS",
+    "ciudad": null,
+    "area": null,
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "JUAN MANUEL CASTILLO OCAÑA",
+    "ciudad": null,
+    "area": "LABORAL",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "ALDO GIBRAN PALOMARES MARQUEZ",
+    "ciudad": null,
+    "area": "FINANZAS",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 3,
+    "confianza": 3,
+    "promedio": 3
+  },
+  {
+    "nombre": "NOE DANIEL SOLIS HERNANDEZ",
+    "ciudad": null,
+    "area": "CALIDAD",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "ANTONIO DIAZ ARECHIGA",
+    "ciudad": null,
+    "area": "LABORAL",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 4,
+    "promedio": 4.5
+  },
+  {
+    "nombre": "MARIA DE JESUS VENEGAS LOPEZ",
+    "ciudad": null,
+    "area": "CALIDAD",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 4,
+    "confianza": 4,
+    "promedio": 4
+  },
+  {
+    "nombre": "JOSE GUADALUPE MARTINEZ ARENAS",
+    "ciudad": null,
+    "area": "ADUANAS",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  },
+  {
+    "nombre": "JONATHAN JATNIEL GUERRA ORUETA",
+    "ciudad": null,
+    "area": "CALIDAD SEGURIDAD E HIGIENE",
+    "honorarioOnlineHora": 500,
+    "honorarioPresencialHora": 1000,
+    "dominio": 5,
+    "confianza": 5,
+    "promedio": 5
+  }
+]
