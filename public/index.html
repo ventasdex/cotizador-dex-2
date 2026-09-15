@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DEX · Cotizador 2.1</title>
+  <title>DEX · Cotizador 2.2</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark">D</div>
-      <div><strong>DEX</strong><span>Cotizador 2.1</span></div>
+      <div><strong>DEX</strong><span>Cotizador 2.2</span></div>
     </div>
     <nav class="nav">
       <button class="nav-item active" data-view="quote">✦ <span>Nueva cotización</span></button>
@@ -19,8 +19,8 @@
       <button class="nav-item" data-action="history">◷ <span>Históricos</span></button>
     </nav>
     <div class="side-tip">
-      <b>DEXI sin costo</b>
-      <p>Busca temarios DEX y referencias de precio usando tus propios históricos. Sin API de pago.</p>
+      <b>DEXI · Flujo asistido</b>
+      <p>Describe lo que pidió el cliente. DEXI busca referencias, prepara el contenido y calcula precio. Sin API de pago por ahora.</p>
     </div>
     <div class="profile"><div class="profile-dot">DX</div><div><b>Equipo DEX</b><span>Ventas</span></div></div>
   </aside>
@@ -52,6 +52,16 @@
 
     <section class="card">
       <div class="section-head"><span class="step">02</span><div><h2>Contenido de la propuesta</h2><p>Completa las páginas con la estructura comercial de DEX.</p></div></div>
+      <div class="dexi-brief-card">
+        <div class="dexi-brief-copy">
+          <span class="dexi-badge">✦ DEXI</span>
+          <h3>¿Qué solicitó el cliente?</h3>
+          <p>Escríbelo como te lo explicaron por llamada, correo o WhatsApp. No necesitas redactarlo de forma técnica.</p>
+        </div>
+        <textarea id="clientRequest" rows="5" placeholder="Ej. El cliente necesita un curso práctico de solución de problemas para 18 supervisores. Lo quiere presencial en Querétaro, de 12 horas, con causa raíz, 5 porqués, Ishikawa y acciones correctivas..."></textarea>
+        <div class="dexi-brief-actions"><button class="btn btn-dexi" id="buildWithDexi">✦ Construir propuesta</button><small>DEXI primero consulta la biblioteca y los históricos. Si el tema es nuevo, te prepara la generación profesional con ChatGPT para importarla en un solo paso.</small></div>
+      </div>
+
       <label class="field"><span>Título del curso o servicio</span><div class="inline"><input id="title" placeholder="Ej. AMEF AIAG & VDA" /><button class="mini-btn" id="findTemplate">Buscar en DEX</button></div></label>
       <div id="templateHint" class="hint hidden"></div>
 
@@ -104,8 +114,9 @@ DEX México se compromete a mantener la confidencialidad de la información obte
         <hr>
         <div class="total-row"><span>Total</span><b id="total">$0.00</b></div>
         <button class="btn btn-primary full" id="generateBtn">Generar propuesta</button>
-        <button class="btn btn-light full" id="saveDraft">Guardar borrador</button>
-        <small>PDF y Word editable se descargan desde la vista previa.</small>
+        <button class="btn btn-light full" id="saveQuote">Guardar cotización</button>
+        <button class="btn btn-light full" id="saveDraft">Guardar borrador local</button>
+        <small>Guardar cotización crea el histórico. PDF y Word editable se descargan desde la vista previa.</small>
       </section>
     </div>
   </main>

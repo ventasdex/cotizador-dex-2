@@ -28,6 +28,32 @@ const PRECIOS = loadJson('precios.json');
 const HISTORICOS = loadJson('historicos.json');
 const CONSULTORES = loadJson('consultores.json');
 
+// Historial persistente opcional (Supabase). Si no está configurado,
+// el frontend usa respaldo local en el navegador para no bloquear la operación.
+const SUPABASE_URL = String(process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+const HAS_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+
+async function supabaseFetch(resource, options = {}) {
+  if (!HAS_SUPABASE) throw new Error('SUPABASE_NOT_CONFIGURED');
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${resource}`, {
+    ...options,
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+      ...(options.headers || {})
+    }
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Supabase ${response.status}: ${text}`);
+  }
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
 function normalize(value = '') {
   return String(value)
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -191,12 +217,14 @@ function getPriceSuggestion(query, courseTitle, parsed) {
 }
 
 function buildChatGptPrompt(query, match, parsed) {
-  const base = match ? `Usa como base este temario DEX existente y adáptalo sin perder profundidad:\n\n${match.temario}` : 'No existe todavía un temario DEX equivalente; desarrolla uno profesional desde cero.';
-  return `Actúa como diseñador instruccional senior de DEX México especializado en capacitación corporativa.\n\nSolicitud comercial:\n${query}\n\nDatos detectados:\n- Duración: ${parsed.hours || 'por definir'} horas\n- Modalidad: ${parsed.modality || 'por definir'}\n- Participantes: ${parsed.participants || 'por definir'}\n\n${base}\n\nGenera una propuesta profesional con: título, presentación, objetivo general, 4-6 objetivos específicos, dirigido a, función/beneficio principal, metodología y un temario detallado proporcional a la duración. Para 8 horas usa al menos 4 módulos y 12 subtemas; para 16 horas o más aumenta profundidad, ejercicios y casos prácticos. No inventes normas o versiones. Conserva terminología técnica y evita contenido genérico. Devuelve secciones claramente identificadas.`;
+  const base = match
+    ? `TEMARIO DEX DE REFERENCIA (úsalo como base, adáptalo y conserva profundidad técnica):\n${match.temario}`
+    : 'No existe un temario DEX suficientemente equivalente. Desarrolla uno profesional desde cero y evita inventar normas, ediciones o requisitos.';
+  return `Actúa como diseñador instruccional senior y redactor técnico-comercial de DEX México.\n\nSOLICITUD DEL CLIENTE (tal como la recibió la vendedora):\n${query}\n\nDATOS DETECTADOS:\n- Duración: ${parsed.hours || 'por definir'} horas\n- Modalidad: ${parsed.modality || 'por definir'}\n- Participantes: ${parsed.participants || 'por definir'}\n\n${base}\n\nOBJETIVO: construir una propuesta lista para que la vendedora solo supervise y haga correcciones mínimas.\n\nREGLAS DE PROFUNDIDAD DEL TEMARIO:\n- 4 horas: mínimo 3 módulos y 9 subtemas.\n- 8 horas: mínimo 4 módulos y 12 subtemas.\n- 12 horas: mínimo 5 módulos y 15 subtemas.\n- 16 horas: mínimo 6 módulos y 18 subtemas.\n- Más de 16 horas: aumenta módulos, ejercicios, casos y aplicación práctica proporcionalmente.\n- El contenido debe ser técnico, concreto y coherente con la duración; evita frases genéricas o temarios superficiales.\n\nDEVUELVE ÚNICAMENTE JSON VÁLIDO, SIN markdown, SIN explicaciones adicionales, con esta estructura exacta:\n{\n  "title": "Título profesional del curso o servicio",\n  "presentation": "Presentación comercial de 1 a 2 párrafos",\n  "objectives": ["Objetivo específico 1", "Objetivo específico 2", "Objetivo específico 3", "Objetivo específico 4"],\n  "benefit": "Función o beneficio principal del servicio",\n  "audience": "Perfil de participantes a quienes va dirigido",\n  "modality": "presencial|online|hibrida|por definir",\n  "durationHours": ${parsed.hours || 'null'},\n  "participants": ${parsed.participants || 'null'},\n  "temario": "MÓDULO I. ...\\n- ...\\n- ...\\n\\nMÓDULO II. ...",\n  "considerations": ["Condición 1", "Condición 2"],\n  "notes": "Metodología, entregables o notas relevantes si aplican"\n}\n\nNo incluyas precios. El precio lo calcula DEXI con información comercial interna.`;
 }
 
 app.get('/api/meta', (_req,res) => {
-  res.json({ temarios: TEMARIOS.length, precios: PRECIOS.length, historicos: HISTORICOS.length, consultores: CONSULTORES.length, aiPaid: false });
+  res.json({ temarios: TEMARIOS.length, precios: PRECIOS.length, historicos: HISTORICOS.length, consultores: CONSULTORES.length, aiPaid: false, persistentHistory: HAS_SUPABASE });
 });
 
 app.get('/api/library', (req,res) => {
@@ -226,6 +254,70 @@ app.post('/api/dexi/suggest', (req,res) => {
   const price = getPriceSuggestion(query, match?.title, parsed);
   const prompt = buildChatGptPrompt(query, match, parsed);
   res.json({ parsed, match, price, prompt });
+});
+
+app.get('/api/storage/status', (_req,res) => {
+  res.json({ persistent: HAS_SUPABASE, provider: HAS_SUPABASE ? 'supabase' : 'browser-fallback' });
+});
+
+app.get('/api/quotes', async (req,res) => {
+  if (!HAS_SUPABASE) return res.status(503).json({ error:'El historial compartido aún no está conectado.', persistent:false });
+  try {
+    const q = String(req.query.q || '').trim();
+    let resource = 'dex_cotizaciones?select=*&order=created_at.desc&limit=100';
+    if (q) {
+      const safe = q.replace(/[,%()]/g, ' ').trim();
+      resource += `&or=(folio.ilike.*${encodeURIComponent(safe)}*,cliente.ilike.*${encodeURIComponent(safe)}*,titulo.ilike.*${encodeURIComponent(safe)}*)`;
+    }
+    const rows = await supabaseFetch(resource, { method:'GET', headers:{Prefer:'return=minimal'} });
+    res.json(rows || []);
+  } catch (e) {
+    console.error(e); res.status(500).json({error:'No fue posible consultar el historial compartido.'});
+  }
+});
+
+app.post('/api/quotes', async (req,res) => {
+  if (!HAS_SUPABASE) return res.status(503).json({ error:'El historial compartido aún no está conectado.', persistent:false });
+  try {
+    const p = req.body || {};
+    const totals = proposalTotals(p);
+    const payload = {
+      folio: null,
+      cliente: p.client || null,
+      contacto: p.contact || null,
+      titulo: p.title || null,
+      solicitud_cliente: p.clientRequest || null,
+      modalidad: p.modality || null,
+      duracion: p.durationTotal || null,
+      participantes: p.participants || null,
+      plantilla: p.template || 'A',
+      estado: p.status || 'Borrador',
+      monto_cotizado: Number(totals.total || 0),
+      monto_contratado: p.contractedAmount == null || p.contractedAmount === '' ? null : Number(p.contractedAmount),
+      vendedor: p.seller || 'Equipo DEX',
+      data: p
+    };
+    const inserted = await supabaseFetch('dex_cotizaciones?select=*', { method:'POST', body:JSON.stringify(payload) });
+    const row = Array.isArray(inserted) ? inserted[0] : inserted;
+    if (!row?.id) throw new Error('No se recibió ID de cotización.');
+    const year = new Date(row.created_at || Date.now()).getFullYear();
+    const folio = `DEX-${year}-${String(row.id).padStart(4,'0')}`;
+    const updated = await supabaseFetch(`dex_cotizaciones?id=eq.${row.id}&select=*`, { method:'PATCH', body:JSON.stringify({folio}) });
+    res.json((Array.isArray(updated) ? updated[0] : updated) || {...row,folio});
+  } catch (e) {
+    console.error(e); res.status(500).json({error:'No fue posible guardar la cotización en el historial compartido.'});
+  }
+});
+
+app.patch('/api/quotes/:id', async (req,res) => {
+  if (!HAS_SUPABASE) return res.status(503).json({ error:'El historial compartido aún no está conectado.', persistent:false });
+  try {
+    const allowed = {};
+    if (req.body.estado !== undefined) allowed.estado = req.body.estado;
+    if (req.body.monto_contratado !== undefined) allowed.monto_contratado = req.body.monto_contratado === '' ? null : Number(req.body.monto_contratado);
+    const rows = await supabaseFetch(`dex_cotizaciones?id=eq.${Number(req.params.id)}&select=*`, {method:'PATCH',body:JSON.stringify(allowed)});
+    res.json(Array.isArray(rows)?rows[0]:rows);
+  } catch(e){ console.error(e); res.status(500).json({error:'No fue posible actualizar la cotización.'}); }
 });
 
 function money(n) {
@@ -479,4 +571,4 @@ app.post('/api/export/docx', async (req,res) => {
 
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 2.0 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 2.2 en puerto ${PORT}`));

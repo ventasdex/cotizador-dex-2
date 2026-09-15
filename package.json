@@ -1,8 +1,8 @@
 {
   "name": "cotizador-dex-2",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "private": true,
-  "description": "Cotizador DEX 2.0 con DEXI sin API de pago",
+  "description": "Cotizador DEX 2.2 con DEXI asistido e histórico persistente opcional",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

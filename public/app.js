@@ -4,6 +4,7 @@ let concepts = [];
 let currentDexi = null;
 let coverData = '';
 let selectedTemplate = 'A';
+let currentQuoteRecord = null;
 
 const modal = $('modalBackdrop');
 const body = $('modalBody');
@@ -20,17 +21,19 @@ function toast(text){
 function quoteData(){
   return {
     client:$('client').value.trim(), contact:$('contact').value.trim(), whatsapp:$('whatsapp').value.trim(), email:$('email').value.trim(), validity:$('validity').value,
+    clientRequest:$('clientRequest')?.value.trim() || '',
     title:$('title').value.trim(), modality:$('modality').value, durationTotal:$('durationTotal').value.trim(), participants:$('participants').value.trim(), accreditation:$('accreditation').value.trim(),
     presentation:$('presentation').value.trim(), objectives:$('objectives').value.trim(), benefit:$('benefit').value.trim(), audience:$('audience').value.trim(), temario:$('temario').value.trim(), considerations:$('considerations').value.trim(), notes:$('notes').value.trim(),
-    discount:Number($('discount').value)||0, iva:Number($('iva').value)||0, concepts:concepts.map(x=>({...x})), coverData, template:selectedTemplate
+    discount:Number($('discount').value)||0, iva:Number($('iva').value)||0, concepts:concepts.map(x=>({...x})), coverData, template:selectedTemplate, status:currentQuoteRecord?.estado || 'Borrador', historyId:currentQuoteRecord?.id || null, folio:currentQuoteRecord?.folio || null
   };
 }
 
 function applyData(p){
-  ['client','contact','whatsapp','email','validity','title','modality','durationTotal','participants','accreditation','presentation','objectives','benefit','audience','temario','considerations','notes','discount','iva'].forEach(k=>{ if(p[k]!==undefined && $(k)) $(k).value=p[k]; });
+  ['client','contact','whatsapp','email','validity','clientRequest','title','modality','durationTotal','participants','accreditation','presentation','objectives','benefit','audience','temario','considerations','notes','discount','iva'].forEach(k=>{ if(p[k]!==undefined && $(k)) $(k).value=p[k]; });
   concepts=Array.isArray(p.concepts)?p.concepts:[];
   coverData=p.coverData||'';
   selectedTemplate=p.template||'A';
+  if(p.historyId || p.id || p.folio) currentQuoteRecord={id:p.historyId||p.id||null,folio:p.folio||null,estado:p.status||p.estado||'Borrador'};
   if(coverData){$('coverPreview').style.backgroundImage=`url(${coverData})`; $('coverPreview').textContent='';}
   renderConcepts();
 }
@@ -88,26 +91,67 @@ async function searchTemplate(q){
 }
 $('findTemplate').onclick=()=>searchTemplate($('title').value);
 
-$('openDexi').onclick=()=>{
-  showModal(`<div class="dexi-head"><h2>✦ DEXI</h2><p>Asistente comercial sin API de pago · usa biblioteca, matriz e históricos DEX.</p></div>
-  <p>Cuéntame qué servicio o capacitación necesita el cliente. DEXI buscará un temario real y referencias de precio.</p>
-  <div class="dexi-input"><textarea id="dexiQuery" placeholder="Ej. Necesito cotizar SPC presencial de 8 horas para 15 participantes"></textarea><button class="btn btn-dexi" id="dexiGo">Analizar</button></div><div id="dexiResult"></div>`);
+function openDexi(initialText=''){
+  const request = initialText || $('clientRequest')?.value.trim() || '';
+  showModal(`<div class="dexi-head"><h2>✦ DEXI</h2><p>Convierte lo que pidió el cliente en una propuesta profesional. Sin API de pago por ahora.</p></div>
+  <p><b>Cuéntame qué solicitó el cliente.</b> Puedes escribirlo como te lo dijeron por teléfono, WhatsApp o correo.</p>
+  <div class="dexi-input"><textarea id="dexiQuery" placeholder="Ej. El cliente necesita un curso de solución de problemas...">${escapeHtml(request)}</textarea><button class="btn btn-dexi" id="dexiGo">Analizar solicitud</button></div>
+  <div id="dexiResult"><div class="dexi-workflow"><div class="dexi-step"><span class="dexi-step-num">1</span><div><b>Entender solicitud</b><small>Duración, modalidad, participantes y necesidad.</small></div></div><div class="dexi-step"><span class="dexi-step-num">2</span><div><b>Buscar referencias DEX</b><small>Temarios, matriz de precios e históricos.</small></div></div><div class="dexi-step"><span class="dexi-step-num">3</span><div><b>Construir contenido</b><small>Si es un tema nuevo, DEXI prepara una generación estructurada para ChatGPT y la importa en un solo paso.</small></div></div></div></div>`);
   $('dexiGo').onclick=runDexi;
-};
+}
+$('openDexi').onclick=()=>openDexi();
+if($('buildWithDexi')) $('buildWithDexi').onclick=()=>openDexi($('clientRequest').value);
+
+function extractDexiJson(raw=''){
+  let text=String(raw).trim();
+  text=text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+  const first=text.indexOf('{'), last=text.lastIndexOf('}');
+  if(first>=0 && last>first) text=text.slice(first,last+1);
+  return JSON.parse(text);
+}
+function normalizeGeneratedTemario(value){
+  if(typeof value==='string') return value;
+  if(Array.isArray(value)) return value.map((m,i)=>{
+    const title=m.title||m.modulo||`MÓDULO ${i+1}`;
+    const items=m.items||m.temas||m.subtemas||[];
+    return `${title}\n${(Array.isArray(items)?items:[]).map(x=>'- '+x).join('\n')}`;
+  }).join('\n\n');
+  return '';
+}
+function applyGeneratedProposal(g){
+  if(g.title) $('title').value=g.title;
+  if(g.presentation) $('presentation').value=g.presentation;
+  if(g.objectives) $('objectives').value=Array.isArray(g.objectives)?g.objectives.map(x=>'• '+x).join('\n'):String(g.objectives);
+  if(g.benefit) $('benefit').value=g.benefit;
+  if(g.audience) $('audience').value=g.audience;
+  const tem=normalizeGeneratedTemario(g.temario); if(tem) $('temario').value=tem;
+  if(g.considerations) $('considerations').value=Array.isArray(g.considerations)?g.considerations.join('\n'):String(g.considerations);
+  if(g.notes) $('notes').value=g.notes;
+  if(g.modality && ['presencial','online','hibrida'].includes(String(g.modality).toLowerCase())) $('modality').value=String(g.modality).toLowerCase();
+  if(g.durationHours) $('durationTotal').value=`${g.durationHours} horas`;
+  if(g.participants) $('participants').value=`Hasta ${g.participants} personas`;
+  if(currentDexi?.price?.suggested && !concepts.length) applyDexiPrice();
+  toast('Contenido profesional importado a la cotización');
+}
 
 async function runDexi(){
-  const query=$('dexiQuery').value.trim(); if(!query)return;
-  const target=$('dexiResult'); target.innerHTML='<p>Buscando en los datos DEX…</p>';
+  const query=$('dexiQuery').value.trim(); if(!query)return toast('Describe primero lo que pidió el cliente.');
+  if($('clientRequest')) $('clientRequest').value=query;
+  const target=$('dexiResult'); target.innerHTML='<p>DEXI está analizando la solicitud y buscando referencias…</p>';
   try{
     currentDexi=await api('/api/dexi/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query})});
     const d=currentDexi, m=d.match, p=d.price;
+    const detected=[d.parsed?.hours?`${d.parsed.hours} h`:null,d.parsed?.participants?`${d.parsed.participants} participantes`:null,d.parsed?.modality||null].filter(Boolean).join(' · ') || 'Datos por completar';
     target.innerHTML=`
-      <div class="result-card"><h3>Temario</h3>${m?`<span class="pill">Coincidencia ${(m.score*100).toFixed(0)}%</span><b>${escapeHtml(m.title)}</b><p>${escapeHtml(m.temario.slice(0,450))}${m.temario.length>450?'…':''}</p>`:'<p>No encontré una coincidencia suficientemente clara. Puedes preparar un prompt profesional para ChatGPT.</p>'}</div>
-      <div class="result-card"><h3>Precio</h3>${p.suggested?`<div class="price-big">${money(p.suggested)} + IVA</div><span class="pill">Confianza ${p.confidence}</span><p>Rango sugerido: <b>${money(p.min)} – ${money(p.max)}</b></p>${p.matrix?`<p>Matriz DEX: ${escapeHtml(p.matrix.course)} · ${money(p.matrix.adjustedPrice)}</p>`:''}${p.historicalMedian?`<p>Mediana histórica comparable: ${money(p.historicalMedian)} · ${p.comparables.length} referencia(s)</p>`:''}`:'<p>Aún no hay suficiente información para recomendar un precio automático.</p>'}</div>
-      <div class="modal-actions">${m?'<button class="btn btn-primary" id="applyDexi">Aplicar a cotización</button>':''}${p.suggested?'<button class="btn btn-light" id="applyPrice">Aplicar solo precio</button>':''}<button class="btn btn-light" id="copyPrompt">Copiar prompt para ChatGPT</button></div>`;
-    if($('applyDexi')) $('applyDexi').onclick=()=>{ applyDexiAll(); hideModal(); };
-    if($('applyPrice')) $('applyPrice').onclick=()=>{ applyDexiPrice(); hideModal(); };
-    $('copyPrompt').onclick=async()=>{ await navigator.clipboard.writeText(d.prompt); toast('Prompt copiado'); };
+      <div class="result-card"><h3>Solicitud entendida</h3><span class="pill">${escapeHtml(detected)}</span><p>DEXI conservará esta solicitud dentro del histórico de la cotización.</p></div>
+      <div class="result-card"><h3>Referencia DEX</h3>${m?`<span class="pill">Coincidencia ${(m.score*100).toFixed(0)}%</span><b>${escapeHtml(m.title)}</b><p>Encontré un temario DEX que puede utilizarse como base y adaptarse a lo solicitado.</p>`:'<p>Es un tema nuevo o no hay una coincidencia suficientemente sólida. DEXI preparará el contenido profesional desde cero mediante el flujo gratuito con ChatGPT.</p>'}</div>
+      <div class="result-card"><h3>Precio</h3>${p.suggested?`<div class="price-big">${money(p.suggested)} + IVA</div><span class="pill">Confianza ${p.confidence}</span><p>Rango sugerido: <b>${money(p.min)} – ${money(p.max)}</b></p>${p.matrix?`<p>Matriz DEX: ${escapeHtml(p.matrix.course)} · ${money(p.matrix.adjustedPrice)}</p>`:''}${p.historicalMedian?`<p>Mediana histórica comparable: ${money(p.historicalMedian)} · ${p.comparables.length} referencia(s)</p>`:''}`:'<p>Aún no hay suficientes referencias para sugerir un precio automático. El contenido sí puede construirse.</p>'}</div>
+      <div class="modal-actions">${m?'<button class="btn btn-light" id="applyDexi">Usar referencia DEX como base</button>':''}${p.suggested?'<button class="btn btn-light" id="applyPrice">Aplicar precio sugerido</button>':''}<button class="btn btn-dexi" id="copyPrompt">1 · Copiar instrucción para ChatGPT</button></div>
+      <div class="dexi-import"><h3>2 · Importar la propuesta generada</h3><p class="modal-sub">Pega aquí la respuesta que te entregue ChatGPT. DEXI llenará automáticamente título, presentación, objetivos, beneficio, dirigido a y temario.</p><textarea id="dexiJson" placeholder='Pega aquí el JSON completo que entregue ChatGPT...'></textarea><div class="modal-actions"><button class="btn btn-primary" id="importDexi">Importar y llenar cotización</button></div></div>`;
+    if($('applyDexi')) $('applyDexi').onclick=()=>{ applyDexiAll(); };
+    if($('applyPrice')) $('applyPrice').onclick=()=>{ applyDexiPrice(); };
+    $('copyPrompt').onclick=async()=>{ try{await navigator.clipboard.writeText(d.prompt);toast('Instrucción copiada. Pégala en ChatGPT.');}catch{toast('No se pudo copiar automáticamente.');} };
+    $('importDexi').onclick=()=>{try{const g=extractDexiJson($('dexiJson').value);applyGeneratedProposal(g);hideModal();}catch(e){toast('No pude leer la respuesta. Verifica que pegaste el JSON completo.');}};
   }catch(e){target.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
 }
 
@@ -144,7 +188,38 @@ async function openCatalog(){
   $('modalSearchGo').onclick=load; $('modalSearch').addEventListener('keydown',e=>{if(e.key==='Enter')load();}); await load();
 }
 async function openLibrary(){showModal(`<h2>Biblioteca DEX</h2><p class="modal-sub">Temarios extraídos del compendio DEX.</p><div class="inline"><input id="modalSearch" placeholder="Buscar temario..."><button class="mini-btn" id="modalSearchGo">Buscar</button></div><div id="modalList" class="list" style="margin-top:14px"></div>`);const load=async()=>{const rows=await api('/api/library?q='+encodeURIComponent($('modalSearch').value));$('modalList').innerHTML=rows.slice(0,25).map((r,i)=>`<div class="list-item" data-row="${i}"><b>${escapeHtml(r.title)}</b><small>${r.modules?.length||0} módulos · ${r.temario.length.toLocaleString()} caracteres</small></div>`).join('');$('modalList').querySelectorAll('[data-row]').forEach(el=>el.onclick=()=>{const r=rows[+el.dataset.row];$('title').value=r.title;$('temario').value=r.temario;Object.entries(courseTextBasics(r.title)).forEach(([k,v])=>$(k).value=v);hideModal();toast('Temario aplicado');});};$('modalSearchGo').onclick=load;$('modalSearch').addEventListener('keydown',e=>{if(e.key==='Enter')load();});await load();}
-async function openHistory(){showModal(`<h2>Históricos 2025</h2><p class="modal-sub">Importes facturados que DEXI usa como referencia comercial.</p><div class="inline"><input id="modalSearch" placeholder="Buscar curso o servicio..."><button class="mini-btn" id="modalSearchGo">Buscar</button></div><div id="modalList" class="list" style="margin-top:14px"></div>`);const load=async()=>{const rows=await api('/api/history?q='+encodeURIComponent($('modalSearch').value));$('modalList').innerHTML=rows.slice(0,30).map(r=>`<div class="list-item"><b>${escapeHtml(r.entrenamiento)}</b><small>${escapeHtml(r.cliente)} · ${r.horas||'—'} h · ${money(r.importe)} · ${r.fechaFacturacion||''}</small></div>`).join('');};$('modalSearchGo').onclick=load;$('modalSearch').addEventListener('keydown',e=>{if(e.key==='Enter')load();});await load();}
+function localQuoteHistory(){ try{return JSON.parse(localStorage.getItem('dex_quote_history')||'[]');}catch{return [];} }
+function saveLocalQuote(p){
+  const rows=localQuoteHistory(); const now=new Date();
+  const folio=`LOCAL-${now.getFullYear()}-${String(Date.now()).slice(-6)}`;
+  const subtotal=(p.concepts||[]).reduce((s,c)=>s+(Number(c.price)||0)*(Number(c.qty)||1),0); const total=subtotal*(1-(Number(p.discount)||0)/100)*(1+(Number(p.iva)||0)/100);
+  const row={id:'local-'+Date.now(),folio,created_at:now.toISOString(),cliente:p.client,titulo:p.title,estado:'Borrador',monto_cotizado:total,solicitud_cliente:p.clientRequest,plantilla:p.template,data:{...p,folio,status:'Borrador'}};
+  rows.unshift(row); localStorage.setItem('dex_quote_history',JSON.stringify(rows.slice(0,200))); return row;
+}
+async function saveQuoteToHistory(){
+  const p=quoteData();
+  if(!p.title && !p.clientRequest) return toast('Agrega la solicitud del cliente o el título de la propuesta.');
+  try{
+    const row=await api('/api/quotes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    currentQuoteRecord=row; localStorage.removeItem('dex_quote_draft'); toast(`Cotización guardada: ${row.folio||'DEX'}`); return row;
+  }catch(e){
+    const row=saveLocalQuote(p); currentQuoteRecord=row; toast(`Guardada temporalmente en este navegador: ${row.folio}`); return row;
+  }
+}
+async function loadSharedQuotes(q=''){
+  try{const rows=await api('/api/quotes?q='+encodeURIComponent(q));return {rows,persistent:true};}catch{return {rows:localQuoteHistory().filter(r=>!q||`${r.folio} ${r.cliente} ${r.titulo}`.toLowerCase().includes(q.toLowerCase())),persistent:false};}
+}
+function renderGeneratedHistory(rows,persistent){
+  if(!rows.length) return '<div class="empty-state"><b>Aún no hay cotizaciones guardadas</b><span>Cuando guardes una propuesta aparecerá aquí.</span></div>';
+  return rows.map((r,i)=>`<div class="quote-history-item"><div><div class="folio">${escapeHtml(r.folio||'Sin folio')} ${persistent?'<span class="history-badge">Compartido</span>':'<span class="history-badge local">Este navegador</span>'}</div><div class="meta">${new Date(r.created_at||Date.now()).toLocaleDateString('es-MX')} · ${escapeHtml(r.estado||'Borrador')}</div></div><div><div class="title">${escapeHtml(r.titulo||'Propuesta sin título')}</div><div class="meta">${escapeHtml(r.cliente||'Sin cliente')}</div></div><div class="amount">${money(r.monto_cotizado||0)}</div><div class="quote-history-actions"><button data-openq="${i}">Abrir</button><button data-dupq="${i}">Duplicar</button></div></div>`).join('');
+}
+async function openHistory(){
+  showModal(`<h2>Histórico de cotizaciones</h2><p class="modal-sub">Cotizaciones generadas por el equipo y referencias comerciales anteriores.</p><div class="history-tabs"><button id="tabGenerated" class="active">Cotizaciones generadas</button><button id="tabLegacy">Referencias 2025</button></div><div class="inline" style="margin-top:12px"><input id="modalSearch" placeholder="Buscar folio, cliente o curso..."><button class="mini-btn" id="modalSearchGo">Buscar</button></div><div id="historyStatus" class="history-status"></div><div id="modalList" class="list" style="margin-top:12px"></div>`);
+  let mode='generated';
+  const loadGenerated=async()=>{mode='generated';$('tabGenerated').classList.add('active');$('tabLegacy').classList.remove('active');const result=await loadSharedQuotes($('modalSearch').value.trim());$('historyStatus').innerHTML=result.persistent?'<div class="storage-note storage-ok">✓ Historial compartido conectado: las vendedoras ven las mismas cotizaciones.</div>':'<div class="storage-note">El historial compartido aún no está conectado. Por ahora las cotizaciones nuevas se guardan temporalmente en este navegador.</div>';$('modalList').innerHTML=renderGeneratedHistory(result.rows,result.persistent);$('modalList').querySelectorAll('[data-openq]').forEach(el=>el.onclick=()=>{const r=result.rows[+el.dataset.openq];applyData(r.data||r);currentQuoteRecord=r;hideModal();toast(`Cotización ${r.folio||''} cargada`);});$('modalList').querySelectorAll('[data-dupq]').forEach(el=>el.onclick=()=>{const r=result.rows[+el.dataset.dupq];applyData(r.data||r);currentQuoteRecord=null;hideModal();toast('Cotización duplicada como nueva');});};
+  const loadLegacy=async()=>{mode='legacy';$('tabLegacy').classList.add('active');$('tabGenerated').classList.remove('active');$('historyStatus').textContent='Referencias históricas de ventas que DEXI utiliza para sugerir precios.';const rows=await api('/api/history?q='+encodeURIComponent($('modalSearch').value));$('modalList').innerHTML=rows.slice(0,40).map(r=>`<div class="list-item"><b>${escapeHtml(r.entrenamiento)}</b><small>${escapeHtml(r.cliente)} · ${r.horas||'—'} h · ${money(r.importe)} · ${r.fechaFacturacion||''}</small></div>`).join('');};
+  $('tabGenerated').onclick=loadGenerated;$('tabLegacy').onclick=loadLegacy;$('modalSearchGo').onclick=()=>mode==='generated'?loadGenerated():loadLegacy();$('modalSearch').addEventListener('keydown',e=>{if(e.key==='Enter') $('modalSearchGo').click();});await loadGenerated();
+}
 
 document.querySelector('[data-action="catalog"]').onclick=openCatalog;document.querySelector('[data-action="library"]').onclick=openLibrary;document.querySelector('[data-action="history"]').onclick=openHistory;
 
@@ -167,15 +242,16 @@ function previewA(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);re
 function previewB(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-b"><div class="pv-b-hero"><img src="/dex-logo-real.png"><span>DEX MÉXICO / PROPUESTA COMERCIAL</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1><div class="pv-pills"><b>${escapeHtml(p.modality||'—')}</b><b>${escapeHtml(p.durationTotal||'—')}</b><b>${escapeHtml(p.participants||'—')}</b><b>${escapeHtml(p.accreditation||'—')}</b></div></div><div class="pv-b-body"><div class="pv-card-grid"><section><h3>Objetivo general</h3><p>${nl2br(p.objectives)}</p></section><section><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></section><section><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><section><h3>Presentación</h3><p>${nl2br(p.presentation)}</p></section></div><h3 class="pv-title-green">Contenido programático</h3><div class="pv-b-mods">${mods.map((m,i)=>`<article><span>${String(i+1).padStart(2,'0')}</span><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-b-money"><div><small>SERVICIO COTIZADO</small><b>${escapeHtml(p.title||'Servicio DEX')}</b></div><strong>${money(t.total)}<small> MXN</small></strong></div>${previewContact(p,'pv-contact-b')}</div></div>`;}
 function previewC(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-c"><div class="pv-c-hero"><div class="pv-c-copy"><img src="/dex-logo-real.png"><span>PROPUESTA DE CAPACITACIÓN</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1></div><div class="pv-c-image" ${p.coverData?`style="background-image:url('${p.coverData}')"`:''}>${p.coverData?'':'<b>ESPACIO PARA IMAGEN</b><small>La imagen cargada se acomoda automáticamente.</small>'}</div></div><div class="pv-meta pv-meta-c">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-c-body"><p class="pv-c-lead">${nl2br(p.presentation)}</p><div class="pv-cols"><section><h3>Objetivo</h3><p>${nl2br(p.objectives)}</p><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><aside><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></aside></div><h3 class="pv-c-gold">Contenido programático</h3><div class="pv-c-mods">${mods.map(m=>`<article><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-c-money"><div><small>INVERSIÓN</small><b>${escapeHtml(p.title||'Servicio DEX')}</b><span>${escapeHtml(p.durationTotal||'')}</span></div><strong>${money(t.total)}<small> MXN</small></strong></div>${previewContact(p,'pv-contact-c')}</div></div>`;}
 function renderSelectedPreview(){ const p=quoteData(); return selectedTemplate==='B'?previewB(p):selectedTemplate==='C'?previewC(p):previewA(p); }
-function previewHtml(){return `<div class="preview-shell"><div class="template-toolbar"><div><b>Elige el diseño de la cotización</b><small>La información se acomoda automáticamente al cambiar de plantilla.</small></div><div class="template-switch"><button data-template="A" class="${selectedTemplate==='A'?'active':''}">A · Corporativa</button><button data-template="B" class="${selectedTemplate==='B'?'active':''}">B · Moderna</button><button data-template="C" class="${selectedTemplate==='C'?'active':''}">C · Premium visual</button></div></div><div id="templatePreview">${renderSelectedPreview()}</div><div class="modal-actions preview-actions"><button class="btn btn-primary" id="pdfBtn">Descargar PDF con este diseño</button><button class="btn btn-light" id="docxBtn">Descargar Word editable</button><button class="btn btn-light" id="backEdit">← Seguir editando</button></div></div>`;}
+function previewHtml(){return `<div class="preview-shell"><div class="template-toolbar"><div><b>Elige el diseño de la cotización</b><small>La información se acomoda automáticamente al cambiar de plantilla.</small></div><div class="template-switch"><button data-template="A" class="${selectedTemplate==='A'?'active':''}">A · Corporativa</button><button data-template="B" class="${selectedTemplate==='B'?'active':''}">B · Moderna</button><button data-template="C" class="${selectedTemplate==='C'?'active':''}">C · Premium visual</button></div></div><div id="templatePreview">${renderSelectedPreview()}</div><div class="modal-actions preview-actions"><button class="btn btn-primary" id="savePreviewQuote">Guardar cotización</button><button class="btn btn-light" id="pdfBtn">Descargar PDF con este diseño</button><button class="btn btn-light" id="docxBtn">Descargar Word editable</button><button class="btn btn-light" id="backEdit">← Seguir editando</button></div></div>`;}
 function bindPreviewActions(){
  document.querySelectorAll('[data-template]').forEach(btn=>btn.onclick=()=>{selectedTemplate=btn.dataset.template; body.innerHTML=previewHtml(); bindPreviewActions();});
- $('backEdit').onclick=hideModal; $('pdfBtn').onclick=()=>downloadExport('/api/export/pdf','pdf'); $('docxBtn').onclick=()=>downloadExport('/api/export/docx','docx');
+ $('backEdit').onclick=hideModal; if($('savePreviewQuote')) $('savePreviewQuote').onclick=saveQuoteToHistory; $('pdfBtn').onclick=()=>downloadExport('/api/export/pdf','pdf'); $('docxBtn').onclick=()=>downloadExport('/api/export/docx','docx');
 }
 function openPreview(){showModal(previewHtml());bindPreviewActions();}
 $('previewBtn').onclick=openPreview;$('generateBtn').onclick=openPreview;
 async function downloadExport(url,ext){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(quoteData())});if(!r.ok)return toast('No fue posible generar el archivo.');const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Propuesta_DEX.${ext}`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);}
 
+if($('saveQuote')) $('saveQuote').onclick=saveQuoteToHistory;
 $('saveDraft').onclick=()=>{localStorage.setItem('dex_quote_draft',JSON.stringify(quoteData()));toast('Borrador guardado en este dispositivo');};
 $('clearBtn').onclick=()=>{if(!confirm('¿Limpiar toda la cotización?'))return;localStorage.removeItem('dex_quote_draft');location.reload();};
 const saved=localStorage.getItem('dex_quote_draft');if(saved){try{applyData(JSON.parse(saved));toast('Borrador recuperado');}catch{}}
