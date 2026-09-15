@@ -3,6 +3,7 @@ const money = n => new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN
 let concepts = [];
 let currentDexi = null;
 let coverData = '';
+let selectedTemplate = 'A';
 
 const modal = $('modalBackdrop');
 const body = $('modalBody');
@@ -19,15 +20,17 @@ function toast(text){
 function quoteData(){
   return {
     client:$('client').value.trim(), contact:$('contact').value.trim(), whatsapp:$('whatsapp').value.trim(), email:$('email').value.trim(), validity:$('validity').value,
-    title:$('title').value.trim(), presentation:$('presentation').value.trim(), objectives:$('objectives').value.trim(), benefit:$('benefit').value.trim(), audience:$('audience').value.trim(), temario:$('temario').value.trim(), considerations:$('considerations').value.trim(), notes:$('notes').value.trim(),
-    discount:Number($('discount').value)||0, iva:Number($('iva').value)||0, concepts:concepts.map(x=>({...x})), coverData
+    title:$('title').value.trim(), modality:$('modality').value, durationTotal:$('durationTotal').value.trim(), participants:$('participants').value.trim(), accreditation:$('accreditation').value.trim(),
+    presentation:$('presentation').value.trim(), objectives:$('objectives').value.trim(), benefit:$('benefit').value.trim(), audience:$('audience').value.trim(), temario:$('temario').value.trim(), considerations:$('considerations').value.trim(), notes:$('notes').value.trim(),
+    discount:Number($('discount').value)||0, iva:Number($('iva').value)||0, concepts:concepts.map(x=>({...x})), coverData, template:selectedTemplate
   };
 }
 
 function applyData(p){
-  ['client','contact','whatsapp','email','validity','title','presentation','objectives','benefit','audience','temario','considerations','notes','discount','iva'].forEach(k=>{ if(p[k]!==undefined && $(k)) $(k).value=p[k]; });
+  ['client','contact','whatsapp','email','validity','title','modality','durationTotal','participants','accreditation','presentation','objectives','benefit','audience','temario','considerations','notes','discount','iva'].forEach(k=>{ if(p[k]!==undefined && $(k)) $(k).value=p[k]; });
   concepts=Array.isArray(p.concepts)?p.concepts:[];
   coverData=p.coverData||'';
+  selectedTemplate=p.template||'A';
   if(coverData){$('coverPreview').style.backgroundImage=`url(${coverData})`; $('coverPreview').textContent='';}
   renderConcepts();
 }
@@ -111,6 +114,9 @@ async function runDexi(){
 function applyDexiAll(){
   const d=currentDexi;if(!d)return;
   if(d.match){ $('title').value=d.match.title; $('temario').value=d.match.temario; const t=courseTextBasics(d.match.title); Object.entries(t).forEach(([k,v])=>$(k).value=v); }
+  if(d.parsed?.modality) $('modality').value=d.parsed.modality==='online'?'online':d.parsed.modality==='presencial'?'presencial':'hibrida';
+  if(d.parsed?.hours) $('durationTotal').value=`${d.parsed.hours} horas`;
+  if(d.parsed?.participants) $('participants').value=`Hasta ${d.parsed.participants} personas`;
   applyDexiPrice(); toast('DEXI aplicó temario y referencia de precio');
 }
 function applyDexiPrice(){
@@ -123,8 +129,9 @@ function applyDexiPrice(){
 
 $('suggestPrice').onclick=async()=>{
   const title=$('title').value.trim(); if(!title)return toast('Escribe primero el curso o servicio.');
-  const hours=(concepts[0]?.duration||'').match(/\d+(?:\.\d+)?/)?.[0];
-  currentDexi=await api('/api/dexi/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:`${title}${hours?` ${hours} horas`:''}`})});
+  const hours=($('durationTotal').value||concepts[0]?.duration||'').match(/\d+(?:\.\d+)?/)?.[0];
+  const mode=$('modality').value==='online'?' online':$('modality').value==='presencial'?' presencial':'';
+  currentDexi=await api('/api/dexi/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:`${title}${hours?` ${hours} horas`:''}${mode}`})});
   const p=currentDexi.price;
   if(!p.suggested)return toast('No hay suficientes referencias para sugerir precio.');
   $('priceHint').innerHTML=`DEXI recomienda <b>${money(p.suggested)} + IVA</b>. Rango: ${money(p.min)}–${money(p.max)} · confianza ${p.confidence}. <button class="mini-btn" id="useSuggested">Usar precio</button>`;
@@ -143,12 +150,29 @@ document.querySelector('[data-action="catalog"]').onclick=openCatalog;document.q
 
 $('coverInput').addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{coverData=r.result;$('coverPreview').style.backgroundImage=`url(${coverData})`;$('coverPreview').textContent='';};r.readAsDataURL(f);});
 
-function previewHtml(){
-  const p=quoteData(); const subtotal=concepts.reduce((s,c)=>s+(Number(c.price)||0),0), total=subtotal*(1-p.discount/100)*(1+p.iva/100);
-  const sec=(h,v)=>v?`<div class="preview-section"><h3>${h}</h3><div style="white-space:pre-wrap;line-height:1.55">${escapeHtml(v)}</div></div>`:'';
-  return `<div class="preview-paper"><h1>DEX México</h1><p>Propuesta comercial</p><hr><h2>${escapeHtml(p.title||'Propuesta de servicio')}</h2><p><b>Cliente:</b> ${escapeHtml(p.client||'—')} &nbsp; <b>Contacto:</b> ${escapeHtml(p.contact||'—')}</p>${sec('Presentación',p.presentation)}${sec('Objetivos',p.objectives)}${sec('Función / beneficio principal',p.benefit)}${sec('Dirigido a',p.audience)}${sec('Desarrollo del tema',p.temario)}${sec('Consideraciones',p.considerations)}${sec('Notas',p.notes)}<div class="preview-section"><h3>Inversión</h3><table class="preview-table"><thead><tr><th>Servicio</th><th>Duración</th><th>Precio</th></tr></thead><tbody>${concepts.map(c=>`<tr><td>${escapeHtml(c.service)}</td><td>${escapeHtml(c.duration||'')}</td><td>${money(c.price)}</td></tr>`).join('')}</tbody></table><div class="preview-total">Total: ${money(total)}</div></div><div class="modal-actions"><button class="btn btn-primary" id="pdfBtn">Descargar PDF</button><button class="btn btn-light" id="docxBtn">Descargar Word editable</button><button class="btn btn-light" id="backEdit">← Seguir editando</button></div></div>`;
+function nl2br(s=''){ return escapeHtml(s).replace(/\n/g,'<br>'); }
+function parsePreviewModules(text=''){
+  const lines=String(text).split(/\r?\n/); const out=[]; let cur=null;
+  lines.forEach(raw=>{ const line=raw.trim(); if(!line)return;
+    if(/^M[ÓO]DULO\b|^MODULO\b/i.test(line)){ if(cur)out.push(cur); cur={title:line,items:[]}; }
+    else if(cur){ cur.items.push(line.replace(/^[-•→]\s*/,'')); }
+    else { if(!out.length) out.push({title:'Contenido',items:[]}); out[0].items.push(line.replace(/^[-•→]\s*/,'')); }
+  }); if(cur)out.push(cur); return out.slice(0,12);
 }
-function openPreview(){showModal(previewHtml());$('backEdit').onclick=hideModal;$('pdfBtn').onclick=()=>downloadExport('/api/export/pdf','pdf');$('docxBtn').onclick=()=>downloadExport('/api/export/docx','docx');}
+function totalCalc(p){const subtotal=p.concepts.reduce((s,c)=>s+(Number(c.price)||0)*(Number(c.qty)||1),0);const discounted=subtotal*(1-(Number(p.discount)||0)/100);return {subtotal,total:discounted*(1+(Number(p.iva)||0)/100)};}
+function previewContact(p,klass=''){
+ return `<div class="pv-contact ${klass}"><div><span class="pv-contact-kicker">Contacto comercial DEX</span><b>Hablemos de tu proyecto</b><small>Estamos listos para revisar fechas, modalidad y alcance.</small></div><div class="pv-contact-grid"><span><i>WhatsApp</i><b>+52 477 294 4676</b></span><span><i>Teléfono</i><b>+52 477 510 5426</b></span><span><i>Correo</i><b>ventas@dexmexico.com</b></span><span><i>Web</i><b>www.dexmexico.com</b></span></div></div>`;
+}
+function previewA(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-a"><div class="pv-a-hero"><img src="/dex-logo-real.png"><span>PROPUESTA COMERCIAL DE CAPACITACIÓN</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1></div><div class="pv-meta">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-a-body"><p>${nl2br(p.presentation)}</p><div class="pv-cols"><section><h3>Objetivo general</h3><p>${nl2br(p.objectives)}</p><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><aside><h3>Función / beneficio principal</h3><p>${nl2br(p.benefit)}</p></aside></div><h3>Contenido programático</h3><div class="pv-mods">${mods.map((m,i)=>`<div><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></div>`).join('')}</div><div class="pv-invest"><div><small>INVERSIÓN</small><b>${escapeHtml(p.title||'Servicio DEX')}</b><span>${escapeHtml(p.durationTotal||'')}</span></div><strong>${money(t.total)}<small> MXN</small></strong></div>${previewContact(p,'pv-contact-a')}</div></div>`;}
+function previewB(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-b"><div class="pv-b-hero"><img src="/dex-logo-real.png"><span>DEX MÉXICO / PROPUESTA COMERCIAL</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1><div class="pv-pills"><b>${escapeHtml(p.modality||'—')}</b><b>${escapeHtml(p.durationTotal||'—')}</b><b>${escapeHtml(p.participants||'—')}</b><b>${escapeHtml(p.accreditation||'—')}</b></div></div><div class="pv-b-body"><div class="pv-card-grid"><section><h3>Objetivo general</h3><p>${nl2br(p.objectives)}</p></section><section><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></section><section><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><section><h3>Presentación</h3><p>${nl2br(p.presentation)}</p></section></div><h3 class="pv-title-green">Contenido programático</h3><div class="pv-b-mods">${mods.map((m,i)=>`<article><span>${String(i+1).padStart(2,'0')}</span><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-b-money"><div><small>SERVICIO COTIZADO</small><b>${escapeHtml(p.title||'Servicio DEX')}</b></div><strong>${money(t.total)}<small> MXN</small></strong></div>${previewContact(p,'pv-contact-b')}</div></div>`;}
+function previewC(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-c"><div class="pv-c-hero"><div class="pv-c-copy"><img src="/dex-logo-real.png"><span>PROPUESTA DE CAPACITACIÓN</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1></div><div class="pv-c-image" ${p.coverData?`style="background-image:url('${p.coverData}')"`:''}>${p.coverData?'':'<b>ESPACIO PARA IMAGEN</b><small>La imagen cargada se acomoda automáticamente.</small>'}</div></div><div class="pv-meta pv-meta-c">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-c-body"><p class="pv-c-lead">${nl2br(p.presentation)}</p><div class="pv-cols"><section><h3>Objetivo</h3><p>${nl2br(p.objectives)}</p><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><aside><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></aside></div><h3 class="pv-c-gold">Contenido programático</h3><div class="pv-c-mods">${mods.map(m=>`<article><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-c-money"><div><small>INVERSIÓN</small><b>${escapeHtml(p.title||'Servicio DEX')}</b><span>${escapeHtml(p.durationTotal||'')}</span></div><strong>${money(t.total)}<small> MXN</small></strong></div>${previewContact(p,'pv-contact-c')}</div></div>`;}
+function renderSelectedPreview(){ const p=quoteData(); return selectedTemplate==='B'?previewB(p):selectedTemplate==='C'?previewC(p):previewA(p); }
+function previewHtml(){return `<div class="preview-shell"><div class="template-toolbar"><div><b>Elige el diseño de la cotización</b><small>La información se acomoda automáticamente al cambiar de plantilla.</small></div><div class="template-switch"><button data-template="A" class="${selectedTemplate==='A'?'active':''}">A · Corporativa</button><button data-template="B" class="${selectedTemplate==='B'?'active':''}">B · Moderna</button><button data-template="C" class="${selectedTemplate==='C'?'active':''}">C · Premium visual</button></div></div><div id="templatePreview">${renderSelectedPreview()}</div><div class="modal-actions preview-actions"><button class="btn btn-primary" id="pdfBtn">Descargar PDF con este diseño</button><button class="btn btn-light" id="docxBtn">Descargar Word editable</button><button class="btn btn-light" id="backEdit">← Seguir editando</button></div></div>`;}
+function bindPreviewActions(){
+ document.querySelectorAll('[data-template]').forEach(btn=>btn.onclick=()=>{selectedTemplate=btn.dataset.template; body.innerHTML=previewHtml(); bindPreviewActions();});
+ $('backEdit').onclick=hideModal; $('pdfBtn').onclick=()=>downloadExport('/api/export/pdf','pdf'); $('docxBtn').onclick=()=>downloadExport('/api/export/docx','docx');
+}
+function openPreview(){showModal(previewHtml());bindPreviewActions();}
 $('previewBtn').onclick=openPreview;$('generateBtn').onclick=openPreview;
 async function downloadExport(url,ext){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(quoteData())});if(!r.ok)return toast('No fue posible generar el archivo.');const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Propuesta_DEX.${ext}`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);}
 

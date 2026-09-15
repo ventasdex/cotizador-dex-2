@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DEX · Cotizador 2.0</title>
+  <title>DEX · Cotizador 2.1</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark">D</div>
-      <div><strong>DEX</strong><span>Cotizador 2.0</span></div>
+      <div><strong>DEX</strong><span>Cotizador 2.1</span></div>
     </div>
     <nav class="nav">
       <button class="nav-item active" data-view="quote">✦ <span>Nueva cotización</span></button>
@@ -54,6 +54,13 @@
       <div class="section-head"><span class="step">02</span><div><h2>Contenido de la propuesta</h2><p>Completa las páginas con la estructura comercial de DEX.</p></div></div>
       <label class="field"><span>Título del curso o servicio</span><div class="inline"><input id="title" placeholder="Ej. AMEF AIAG & VDA" /><button class="mini-btn" id="findTemplate">Buscar en DEX</button></div></label>
       <div id="templateHint" class="hint hidden"></div>
+
+      <div class="grid proposal-meta-grid">
+        <label class="field"><span>Modalidad</span><select id="modality"><option value="presencial">Presencial</option><option value="online">Online en vivo</option><option value="hibrida">Híbrida</option></select></label>
+        <label class="field"><span>Duración total</span><input id="durationTotal" placeholder="Ej. 8 horas" /></label>
+        <label class="field"><span>Participantes</span><input id="participants" placeholder="Ej. Hasta 15 personas" /></label>
+        <label class="field"><span>Acreditación</span><input id="accreditation" value="DC-3 + certificado" /></label>
+      </div>
 
       <div class="cover-box">
         <div><b>Imagen de portada</b><p>Por ahora puedes subir una imagen. La generación con IA queda opcional para una fase posterior.</p></div>

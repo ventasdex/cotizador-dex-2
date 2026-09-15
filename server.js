@@ -242,53 +242,190 @@ function proposalTotals(p) {
   return { subtotal, afterDiscount, iva, total: afterDiscount+iva };
 }
 
+function parseModules(text='') {
+  const lines = String(text || '').split(/\r?\n/);
+  const modules = [];
+  let current = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^M[ÓO]DULO\b|^MODULO\b/i.test(line)) {
+      if (current) modules.push(current);
+      current = { title: line, items: [] };
+    } else if (current) {
+      current.items.push(line.replace(/^[-•→]\s*/, ''));
+    } else {
+      if (!modules.length) modules.push({ title: 'Contenido', items: [] });
+      modules[0].items.push(line.replace(/^[-•→]\s*/, ''));
+    }
+  }
+  if (current) modules.push(current);
+  return modules;
+}
+
+const LOGO_PATH = path.join(__dirname, 'public', 'dex-logo-real.png');
+const PDF = { W: 595.28, H: 841.89, M: 40 };
+
+function drawLogo(doc, x, y, width=92) {
+  try { doc.image(LOGO_PATH, x, y, { width }); } catch (_) {}
+}
+function drawFooter(doc, label='DEX México') {
+  doc.save().strokeColor('#d9e2e3').lineWidth(.6).moveTo(40, 807).lineTo(555, 807).stroke();
+  doc.font('Helvetica').fontSize(7.5).fillColor('#66757b').text(label, 40, 816, { width: 410 });
+  doc.text(`Página ${doc.bufferedPageRange().count || 1}`, 480, 816, { width: 75, align: 'right' }).restore();
+}
+function metaValue(p, key, fallback='—') { return String(p[key] || fallback); }
+function drawMetaRow(doc, p, y, palette) {
+  const items = [['MODALIDAD', metaValue(p,'modality')], ['DURACIÓN', metaValue(p,'durationTotal')], ['PARTICIPANTES', metaValue(p,'participants')], ['ACREDITACIÓN', metaValue(p,'accreditation')]];
+  const x=40, totalW=515, cellW=totalW/4, h=58;
+  items.forEach((it,i)=>{
+    const xx=x+i*cellW;
+    doc.save().fillColor('#ffffff').rect(xx,y,cellW,h).fill().strokeColor(palette.line||'#d7e2e5').lineWidth(.8).rect(xx,y,cellW,h).stroke();
+    doc.fillColor(palette.muted||'#71848c').font('Helvetica-Bold').fontSize(7.2).text(it[0],xx+6,y+14,{width:cellW-12,align:'center'});
+    doc.fillColor(palette.ink||'#17324a').fontSize(10).text(it[1],xx+6,y+30,{width:cellW-12,align:'center'}).restore();
+  });
+  return y+h;
+}
+function drawTwoColumnText(doc, p, y, palette, variant='A') {
+  const x=48, gap=24, col=(499-gap)/2;
+  doc.font('Helvetica').fontSize(9.4).fillColor(palette.ink).text(p.presentation || '', x, y, {width:499,lineGap:2});
+  y=doc.y+16;
+  const startY=y;
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(palette.accent).text('OBJETIVO GENERAL',x,startY,{width:col});
+  doc.font('Helvetica').fontSize(9).fillColor(palette.ink).text(p.objectives || '—',x,startY+17,{width:col,lineGap:2});
+  let ly=doc.y+14;
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(palette.accent).text('DIRIGIDO A',x,ly,{width:col});
+  doc.font('Helvetica').fontSize(9).fillColor(palette.ink).text(p.audience || '—',x,ly+17,{width:col,lineGap:2});
+  const leftBottom=doc.y;
+  const rx=x+col+gap;
+  const benefitH=Math.max(118, doc.heightOfString(p.benefit || '—',{width:col-24,lineGap:2})+50);
+  if (variant==='C') doc.roundedRect(rx,startY,col,benefitH,12).fill(palette.soft);
+  else { doc.rect(rx,startY,col,benefitH).fill(palette.soft); if(variant==='A') doc.rect(rx,startY,4,benefitH).fill(palette.accent); }
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(variant==='C'?palette.dark:palette.accent).text('FUNCIÓN / BENEFICIO PRINCIPAL',rx+14,startY+14,{width:col-28});
+  doc.font('Helvetica').fontSize(9).fillColor(palette.ink).text(p.benefit || '—',rx+14,startY+33,{width:col-28,lineGap:2});
+  return Math.max(leftBottom,startY+benefitH)+16;
+}
+function addModulesPage(doc, p, palette, variant='A') {
+  doc.addPage({size:'A4',margin:0});
+  let y=46;
+  doc.fillColor(palette.accent).font('Helvetica-Bold').fontSize(8).text('02 | DESARROLLO DEL TEMA',40,y);
+  y+=22; doc.fillColor(palette.dark).fontSize(20).text('Contenido programático',40,y); y+=36;
+  const modules=parseModules(p.temario);
+  const colW=245, gap=18, x1=40, x2=40+colW+gap;
+  let colY=[y,y];
+  modules.forEach((m,idx)=>{
+    const col=colY[0] <= colY[1] ? 0 : 1; const x=col===0?x1:x2; let yy=colY[col];
+    const text=m.items.length?m.items.map(t=>'• '+t).join('\n'):'—';
+    const titleH=doc.heightOfString(m.title,{width:colW-24});
+    const bodyH=doc.heightOfString(text,{width:colW-24,lineGap:1});
+    const h=Math.max(62,titleH+bodyH+33);
+    if (yy+h>785) { // extra page if needed
+      drawFooter(doc,'DEX México · Desarrollo del tema');
+      doc.addPage({size:'A4',margin:0}); colY[0]=colY[1]=58; yy=58;
+    }
+    if (variant==='B') {
+      doc.roundedRect(x,yy,colW,h,12).fill(idx%2?'#eef5f3':'#f5f8f7').strokeColor('#dfe8e4').lineWidth(.7).stroke();
+      doc.circle(x+18,yy+18,11).fill(palette.accent); doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8).text(String(idx+1).padStart(2,'0'),x+8.5,yy+14,{width:19,align:'center'});
+      doc.fillColor(palette.dark).fontSize(9.4).text(m.title,x+38,yy+11,{width:colW-50});
+      doc.font('Helvetica').fontSize(8.2).fillColor(palette.ink).text(text,x+16,yy+35,{width:colW-30,lineGap:1});
+    } else if (variant==='C') {
+      doc.save().strokeColor(palette.gold).lineWidth(3).moveTo(x,yy+4).lineTo(x,yy+h-4).stroke().restore();
+      doc.fillColor(palette.dark).font('Helvetica-Bold').fontSize(9.2).text(m.title,x+12,yy,{width:colW-15});
+      doc.font('Helvetica').fontSize(8.2).fillColor(palette.ink).text(text,x+12,yy+titleH+9,{width:colW-15,lineGap:1});
+    } else {
+      doc.rect(x,yy,colW,h).strokeColor('#d7e3e7').lineWidth(.7).stroke();
+      doc.rect(x,yy,colW,Math.max(26,titleH+13)).fill(idx%2?palette.accent:palette.dark);
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9).text(m.title,x+10,yy+8,{width:colW-20});
+      doc.font('Helvetica').fontSize(8.2).fillColor(palette.ink).text(text,x+12,yy+Math.max(34,titleH+18),{width:colW-24,lineGap:1});
+    }
+    colY[col]=yy+h+12;
+  });
+  drawFooter(doc,'DEX México · Desarrollo del tema');
+}
+function drawContactPanel(doc, p, y, palette, variant='A') {
+  const x=40,w=515,h=112;
+  if (variant==='B') doc.roundedRect(x,y,w,h,14).fill(palette.dark);
+  else if (variant==='C') { doc.roundedRect(x,y,w,h,12).fill('#fffaf0').strokeColor(palette.gold).lineWidth(1.7).stroke(); }
+  else doc.rect(x,y,w,h).fill('#f3fafb').strokeColor('#cfe1e7').lineWidth(.8).stroke();
+  const fg=variant==='B'?'#ffffff':palette.dark; const subtle=variant==='B'?'#a8e5d8':variant==='C'?palette.gold:palette.accent;
+  doc.fillColor(subtle).font('Helvetica-Bold').fontSize(7.5).text('CONTACTO COMERCIAL DEX',x+16,y+13);
+  doc.fillColor(fg).fontSize(16).text('Hablemos de tu proyecto',x+16,y+29);
+  doc.font('Helvetica').fontSize(8.2).fillColor(variant==='B'?'#d9ede8':'#5f6f70').text('Confirma modalidad, fechas tentativas y alcance para avanzar con la programación.',x+16,y+49,{width:w-32});
+  const cards=[['WHATSAPP','+52 477 294 4676'],['TELÉFONO','+52 477 510 5426'],['CORREO','ventas@dexmexico.com'],['WEB','www.dexmexico.com']];
+  const cw=(w-32-18)/4;
+  cards.forEach((c,i)=>{const xx=x+16+i*(cw+6), yy=y+69;
+    if(variant==='B') doc.roundedRect(xx,yy,cw,30,5).fill('#ffffff18').strokeColor('#ffffff28').stroke();
+    else doc.roundedRect(xx,yy,cw,30,5).fill(variant==='C'?'#f7f2e8':'#ffffff').strokeColor(variant==='C'?'#eadfca':'#d7e5e9').stroke();
+    doc.fillColor(subtle).font('Helvetica-Bold').fontSize(6.4).text(c[0],xx+6,yy+5,{width:cw-12});
+    doc.fillColor(fg).fontSize(7.2).text(c[1],xx+6,yy+16,{width:cw-12});
+  });
+}
+function addClosingPage(doc, p, totals, palette, variant='A') {
+  doc.addPage({size:'A4',margin:0}); let y=48;
+  doc.fillColor(variant==='C'?palette.gold:palette.accent).font('Helvetica-Bold').fontSize(8).text('03 | PROPUESTA ECONÓMICA Y CIERRE',40,y);
+  y+=22; doc.fillColor(palette.dark).fontSize(20).text('Inversión, condiciones y contacto',40,y); y+=40;
+  if(variant==='B'){
+    doc.roundedRect(40,y,515,116,14).fill(palette.dark); doc.fillColor('#87dac9').fontSize(7).text('SERVICIO COTIZADO',58,y+18); doc.fillColor('#fff').fontSize(14).text(p.title||'Servicio DEX',58,y+34,{width:300}); doc.fontSize(9).text(`${p.durationTotal||''} · ${p.participants||''}`,58,y+59,{width:300}); doc.fillColor('#e7bb59').fontSize(27).font('Helvetica-Bold').text(money(totals.total),360,y+38,{width:175,align:'right'}); doc.fontSize(9).fillColor('#fff').text('MXN',450,y+73,{width:85,align:'right'});
+  } else if(variant==='C'){
+    doc.roundedRect(40,y,515,116,12).fill(palette.dark); doc.fillColor('#dbc995').fontSize(7).text('INVERSIÓN',58,y+18); doc.fillColor('#fff').fontSize(14).text(p.title||'Servicio DEX',58,y+34,{width:300}); doc.fontSize(9).text(`${p.durationTotal||''} · ${p.participants||''}`,58,y+59,{width:300}); doc.fillColor('#f1d28f').fontSize(27).font('Helvetica-Bold').text(money(totals.total),360,y+38,{width:175,align:'right'}); doc.fontSize(9).fillColor('#fff').text('MXN',450,y+73,{width:85,align:'right'});
+  } else {
+    doc.rect(40,y,340,116).fill(palette.dark); doc.rect(380,y,175,116).fill(palette.accent); doc.fillColor('#75d7dd').fontSize(7).text('SERVICIO COTIZADO',58,y+18); doc.fillColor('#fff').fontSize(14).text(p.title||'Servicio DEX',58,y+34,{width:300}); doc.fontSize(9).text(`${p.durationTotal||''} · ${p.participants||''}`,58,y+61,{width:300}); doc.fontSize(26).font('Helvetica-Bold').text(money(totals.total),390,y+35,{width:155,align:'center'}); doc.fontSize(9).text('MXN',390,y+74,{width:155,align:'center'});
+  }
+  y+=136;
+  doc.fillColor(variant==='C'?palette.gold:palette.accent).font('Helvetica-Bold').fontSize(8).text('CONDICIONES COMERCIALES',40,y); y+=17;
+  const cond=(p.considerations||'').split(/\r?\n/).filter(Boolean).slice(0,8);
+  doc.font('Helvetica').fontSize(8.5).fillColor(palette.ink);
+  cond.forEach(line=>{ doc.text('• '+line,48,y,{width:499,lineGap:1}); y=doc.y+5; });
+  if(p.notes){ y+=4; doc.font('Helvetica-Bold').fontSize(8).fillColor(variant==='C'?palette.gold:palette.accent).text('NOTAS',40,y); y+=15; doc.font('Helvetica').fontSize(8.5).fillColor(palette.ink).text(p.notes,48,y,{width:499,lineGap:1}); y=doc.y+12; }
+  if(y>660) y=660;
+  drawContactPanel(doc,p,y,palette,variant);
+  drawFooter(doc,'DEX México · Cierre comercial');
+}
+function addCoverA(doc,p,palette){
+  doc.rect(0,0,PDF.W,235).fill(palette.dark); drawLogo(doc,445,38,90);
+  doc.fillColor('#58d5da').font('Helvetica-Bold').fontSize(8).text('PROPUESTA COMERCIAL DE CAPACITACIÓN',40,50);
+  doc.fillColor('#fff').fontSize(28).text(p.title||'Propuesta de servicio',40,105,{width:375});
+  doc.strokeColor(palette.accent).lineWidth(2).moveTo(40,195).lineTo(215,195).stroke();
+  const y=drawMetaRow(doc,p,285,palette); drawTwoColumnText(doc,p,y+28,palette,'A'); drawFooter(doc,'DEX México · Plantilla A Corporativa');
+}
+function addCoverB(doc,p,palette){
+  doc.roundedRect(40,40,515,260,22).fill(palette.dark); drawLogo(doc,440,66,80);
+  doc.fillColor('#7be0ca').font('Helvetica-Bold').fontSize(8).text('DEX MÉXICO / PROPUESTA COMERCIAL',70,70);
+  doc.fillColor('#fff').fontSize(27).text(p.title||'Propuesta de servicio',70,118,{width:330});
+  doc.font('Helvetica').fontSize(10).fillColor('#d9ece6').text(p.presentation||'',70,190,{width:330,height:52,ellipsis:true});
+  const pills=[metaValue(p,'modality'),metaValue(p,'durationTotal'),metaValue(p,'participants'),metaValue(p,'accreditation')]; let x=70; pills.forEach(v=>{const w=Math.min(112,doc.widthOfString(v)+22);doc.roundedRect(x,255,w,25,12).strokeColor('#ffffff55').lineWidth(.8).stroke();doc.fillColor('#fff').fontSize(7.7).text(v,x+7,263,{width:w-14,align:'center'});x+=w+8;});
+  const y=340; const gap=18,cw=(515-gap)/2; const cards=[['OBJETIVO GENERAL',p.objectives],['FUNCIÓN / BENEFICIO PRINCIPAL',p.benefit],['DIRIGIDO A',p.audience],['PRESENTACIÓN',p.presentation]];
+  cards.forEach((c,i)=>{const xx=40+(i%2)*(cw+gap), yy=y+Math.floor(i/2)*150;doc.roundedRect(xx,yy,cw,132,14).fill(i===1||i===2?'#f1f6f4':'#ffffff').strokeColor('#dfe8e4').lineWidth(.7).stroke();doc.fillColor(palette.accent).font('Helvetica-Bold').fontSize(7.5).text(c[0],xx+14,yy+15,{width:cw-28});doc.fillColor(palette.ink).font('Helvetica').fontSize(8.7).text(c[1]||'—',xx+14,yy+36,{width:cw-28,height:82,ellipsis:true,lineGap:1});});
+  drawFooter(doc,'DEX México · Plantilla B Moderna');
+}
+function dataUriBuffer(data='') { const m=String(data).match(/^data:image\/(?:png|jpe?g|webp);base64,(.+)$/i); return m?Buffer.from(m[1],'base64'):null; }
+function addCoverC(doc,p,palette){
+  doc.rect(0,0,PDF.W,270).fill(palette.dark); drawLogo(doc,55,55,95);
+  doc.fillColor(palette.gold).font('Helvetica-Bold').fontSize(8).text('PROPUESTA DE CAPACITACIÓN',40,170);
+  doc.fillColor('#fff').fontSize(26).text(p.title||'Propuesta de servicio',40,195,{width:270});
+  const bx=325,by=30,bw=230,bh=210; doc.roundedRect(bx,by,bw,bh,20).fill('#e8dec7');
+  const buf=dataUriBuffer(p.coverData); if(buf){ try{doc.image(buf,bx,by,{cover:[bw,bh],align:'center',valign:'center'});}catch(_){}} else {doc.fillColor('#6b624f').font('Helvetica-Bold').fontSize(11).text('ESPACIO PARA IMAGEN',bx+20,by+90,{width:bw-40,align:'center'});doc.font('Helvetica').fontSize(7.5).text('La imagen cargada se ajusta automáticamente.',bx+25,by+112,{width:bw-50,align:'center'});}
+  const y=drawMetaRow(doc,p,270,palette); doc.font('Helvetica').fontSize(10.5).fillColor(palette.ink).text(p.presentation||'',40,y+25,{width:515,lineGap:2}); drawTwoColumnText(doc,{...p,presentation:''},doc.y+18,palette,'C'); drawFooter(doc,'DEX México · Plantilla C Premium Visual');
+}
+
 app.post('/api/export/pdf', (req,res) => {
   const p = req.body || {};
   const totals = proposalTotals(p);
+  const template = ['A','B','C'].includes(p.template) ? p.template : 'A';
   res.setHeader('Content-Type','application/pdf');
-  res.setHeader('Content-Disposition',`attachment; filename="Propuesta_DEX_${Date.now()}.pdf"`);
-  const doc = new PDFDocument({ size:'LETTER', margins:{top:54,bottom:54,left:54,right:54} });
+  res.setHeader('Content-Disposition',`attachment; filename="Propuesta_DEX_${template}_${Date.now()}.pdf"`);
+  const doc = new PDFDocument({ size:'A4', margin:0, bufferPages:true });
   doc.pipe(res);
-  const navy = '#0b3658', green='#166b59', muted='#65736d';
-  doc.fillColor(navy).fontSize(22).font('Helvetica-Bold').text('DEX México');
-  doc.fontSize(10).fillColor(muted).font('Helvetica').text('Propuesta comercial');
-  doc.moveDown(1.2);
-  doc.fillColor(navy).fontSize(18).font('Helvetica-Bold').text(p.title || 'Propuesta de servicio');
-  doc.moveDown(.4);
-  doc.fontSize(10).fillColor('#333').font('Helvetica').text(`Cliente: ${p.client || '—'}   |   Contacto: ${p.contact || '—'}`);
-  doc.text(`Correo: ${p.email || '—'}   |   WhatsApp: ${p.whatsapp || '—'}   |   Vigencia: ${p.validity || '15 días'}`);
-  doc.moveDown(1);
-
-  const section = (title, body) => {
-    if (!body) return;
-    if (doc.y > 680) doc.addPage();
-    doc.fillColor(green).fontSize(12).font('Helvetica-Bold').text(title);
-    doc.moveDown(.25);
-    doc.fillColor('#222').fontSize(10).font('Helvetica').text(String(body), { lineGap: 2 });
-    doc.moveDown(.7);
+  const palettes={
+    A:{dark:'#0f3252',accent:'#1aa6af',soft:'#edf7f8',ink:'#173047',muted:'#71848c',line:'#d7e2e5',gold:'#c9a458'},
+    B:{dark:'#194556',accent:'#18745f',soft:'#eef5f3',ink:'#183142',muted:'#6f827c',line:'#dfe8e4',gold:'#e7bb59'},
+    C:{dark:'#173d35',accent:'#c9a458',soft:'#f4efe5',ink:'#273631',muted:'#7d7463',line:'#e6ddcb',gold:'#c9a458'}
   };
-  section('Presentación', p.presentation);
-  section('Objetivos', p.objectives);
-  section('Función / beneficio principal', p.benefit);
-  section('Dirigido a', p.audience);
-  section('Desarrollo del tema', p.temario);
-  section('Consideraciones', p.considerations);
-  section('Notas de la propuesta', p.notes);
-
-  if (doc.y > 560) doc.addPage();
-  doc.fillColor(navy).fontSize(14).font('Helvetica-Bold').text('Inversión');
-  doc.moveDown(.5);
-  (p.concepts || []).forEach(c => {
-    doc.fontSize(10).fillColor('#222').font('Helvetica-Bold').text(c.service || 'Servicio', {continued:true});
-    doc.font('Helvetica').text(`   ${c.duration || ''}   ${money((Number(c.price)||0)*(Number(c.qty)||1))}`, {align:'right'});
-  });
-  doc.moveDown(.5);
-  doc.font('Helvetica').text(`Subtotal: ${money(totals.subtotal)}`, {align:'right'});
-  doc.text(`Descuento: ${Number(p.discount)||0}%`, {align:'right'});
-  doc.text(`IVA: ${Number(p.iva ?? 16)}%`, {align:'right'});
-  doc.font('Helvetica-Bold').fontSize(14).fillColor(green).text(`Total: ${money(totals.total)}`, {align:'right'});
-  doc.moveDown(2);
-  doc.fontSize(9).fillColor(muted).font('Helvetica').text('DEX México · www.dexmexico.com', {align:'center'});
+  const palette=palettes[template];
+  if(template==='B') addCoverB(doc,p,palette); else if(template==='C') addCoverC(doc,p,palette); else addCoverA(doc,p,palette);
+  addModulesPage(doc,p,palette,template);
+  addClosingPage(doc,p,totals,palette,template);
+  const range=doc.bufferedPageRange(); for(let i=range.start;i<range.start+range.count;i++){doc.switchToPage(i);}
   doc.end();
 });
 
@@ -301,7 +438,8 @@ app.post('/api/export/docx', async (req,res) => {
     children.push(new Paragraph({ text:'Propuesta comercial', spacing:{after:220} }));
     children.push(new Paragraph({ text:p.title || 'Propuesta de servicio', heading:HeadingLevel.HEADING_1 }));
     children.push(new Paragraph({ children:[new TextRun({text:`Cliente: ${p.client || '—'}`,bold:true}), new TextRun(`   Contacto: ${p.contact || '—'}`)] }));
-    children.push(new Paragraph({ text:`Correo: ${p.email || '—'}   |   WhatsApp: ${p.whatsapp || '—'}   |   Vigencia: ${p.validity || '15 días'}`, spacing:{after:220} }));
+    children.push(new Paragraph({ text:`Correo: ${p.email || '—'}   |   WhatsApp: ${p.whatsapp || '—'}   |   Vigencia: ${p.validity || '15 días'}` }));
+    children.push(new Paragraph({ text:`Modalidad: ${p.modality || '—'}   |   Duración: ${p.durationTotal || '—'}   |   Participantes: ${p.participants || '—'}   |   Acreditación: ${p.accreditation || '—'}`, spacing:{after:220} }));
     const addSection = (title, body) => {
       if (!body) return;
       children.push(new Paragraph({ text:title, heading:HeadingLevel.HEADING_2 }));
