@@ -274,12 +274,42 @@ function previewA(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);re
 function previewB(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-b"><div class="pv-b-hero"><img src="/dex-logo-real.png"><span>DEX MÉXICO / PROPUESTA COMERCIAL</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1><div class="pv-pills"><b>${escapeHtml(p.modality||'—')}</b><b>${escapeHtml(p.durationTotal||'—')}</b><b>${escapeHtml(p.participants||'—')}</b><b>${escapeHtml(p.accreditation||'—')}</b></div></div><div class="pv-b-body"><div class="pv-card-grid"><section><h3>Objetivo general</h3><p>${nl2br(p.objectives)}</p></section><section><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></section><section><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><section><h3>Presentación</h3><p>${nl2br(p.presentation)}</p></section></div><h3 class="pv-title-green">Contenido programático</h3><div class="pv-b-mods">${mods.map((m,i)=>`<article><span>${String(i+1).padStart(2,'0')}</span><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-b-money"><div><small>SERVICIO COTIZADO</small><b>${escapeHtml(p.title||'Servicio DEX')}</b></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-b')}</div></div>`;}
 function previewC(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-c"><div class="pv-c-hero"><div class="pv-c-copy"><img src="/dex-logo-real.png"><span>PROPUESTA DE CAPACITACIÓN</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1></div><div class="pv-c-image" ${p.coverData?`style="background-image:url('${p.coverData}')"`:''}>${p.coverData?'':'<b>ESPACIO PARA IMAGEN</b><small>La imagen cargada se acomoda automáticamente.</small>'}</div></div><div class="pv-meta pv-meta-c">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-c-body"><p class="pv-c-lead">${nl2br(p.presentation)}</p><div class="pv-cols"><section><h3>Objetivo</h3><p>${nl2br(p.objectives)}</p><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><aside><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></aside></div><h3 class="pv-c-gold">Contenido programático</h3><div class="pv-c-mods">${mods.map(m=>`<article><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-c-money"><div><small>INVERSIÓN</small><b>${escapeHtml(p.title||'Servicio DEX')}</b><span>${escapeHtml(p.durationTotal||'')}</span></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-c')}</div></div>`;}
 function renderSelectedPreview(){ const p=quoteData(); return selectedTemplate==='B'?previewB(p):selectedTemplate==='C'?previewC(p):previewA(p); }
+
+function proposalCompleteness(){
+  const p=quoteData();
+  const checks=[
+    ['title','Título del curso o servicio',p.title],
+    ['presentation','Presentación',p.presentation],
+    ['objectives','Objetivo general / objetivos',p.objectives],
+    ['benefit','Función / beneficio principal',p.benefit],
+    ['audience','Dirigido a',p.audience],
+    ['temario','Contenido programático / temario',p.temario],
+    ['durationTotal','Duración total',p.durationTotal],
+    ['participants','Participantes',p.participants]
+  ];
+  const missing=checks.filter(([, ,value])=>!String(value||'').trim()).map(([id,label])=>({id,label}));
+  const validConcepts=(p.concepts||[]).filter(c=>String(c.service||'').trim() && Number(c.price)>0);
+  if(!validConcepts.length) missing.push({id:'investment',label:'Inversión / concepto cotizado'});
+  return {ok:missing.length===0,missing};
+}
+
+function showIncompleteProposal(){
+  const result=proposalCompleteness();
+  const items=result.missing.map(x=>`<li><b>${escapeHtml(x.label)}</b></li>`).join('');
+  showModal(`<div class="dexi-head"><h2>✦ La propuesta todavía está incompleta</h2><p>Antes de generar el PDF o la vista previa, completa los datos esenciales para evitar enviar una cotización con espacios vacíos.</p></div>
+    <div class="result-card"><h3>Falta completar</h3><ul class="missing-list">${items}</ul></div>
+    <div class="result-card"><h3>DEXI puede ayudarte</h3><p>${$('clientRequest')?.value.trim()? 'Ya tengo la solicitud del cliente. DEXI puede usarla para construir la propuesta y buscar referencias DEX.' : 'Escribe qué solicitó el cliente y DEXI te ayudará a estructurar la propuesta.'}</p></div>
+    <div class="modal-actions"><button class="btn btn-dexi" id="completeWithDexi">✦ Construir con DEXI</button><button class="btn btn-light" id="returnToEdit">Seguir editando</button></div>`);
+  $('completeWithDexi').onclick=()=>{ const request=$('clientRequest')?.value.trim()||''; hideModal(); openDexi(request); };
+  $('returnToEdit').onclick=()=>{ const first=result.missing[0]; hideModal(); if(first?.id && first.id!=='investment' && $(first.id)){ $(first.id).scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>$(first.id).focus(),350); } else if(first?.id==='investment'){ $('addConcept')?.scrollIntoView({behavior:'smooth',block:'center'}); } };
+}
+
 function previewHtml(){return `<div class="preview-shell"><div class="template-toolbar"><div><b>Elige el diseño de la cotización</b><small>La información se acomoda automáticamente al cambiar de plantilla.</small></div><div class="template-switch"><button data-template="A" class="${selectedTemplate==='A'?'active':''}">A · Corporativa</button><button data-template="B" class="${selectedTemplate==='B'?'active':''}">B · Moderna</button><button data-template="C" class="${selectedTemplate==='C'?'active':''}">C · Premium visual</button></div></div><div id="templatePreview">${renderSelectedPreview()}</div><div class="modal-actions preview-actions"><button class="btn btn-primary" id="savePreviewQuote">Guardar cotización</button><button class="btn btn-light" id="pdfBtn">Descargar PDF con este diseño</button><button class="btn btn-light" id="docxBtn">Descargar Word editable</button><button class="btn btn-light" id="backEdit">← Seguir editando</button></div></div>`;}
 function bindPreviewActions(){
  document.querySelectorAll('[data-template]').forEach(btn=>btn.onclick=()=>{selectedTemplate=btn.dataset.template; body.innerHTML=previewHtml(); bindPreviewActions();});
  $('backEdit').onclick=hideModal; if($('savePreviewQuote')) $('savePreviewQuote').onclick=saveQuoteToHistory; $('pdfBtn').onclick=()=>downloadExport('/api/export/pdf','pdf'); $('docxBtn').onclick=()=>downloadExport('/api/export/docx','docx');
 }
-function openPreview(){showModal(previewHtml());bindPreviewActions();}
+function openPreview(){ const check=proposalCompleteness(); if(!check.ok) return showIncompleteProposal(); showModal(previewHtml());bindPreviewActions();}
 $('previewBtn').onclick=openPreview;$('generateBtn').onclick=openPreview;
 async function downloadExport(url,ext){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(quoteData())});if(!r.ok)return toast('No fue posible generar el archivo.');const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Propuesta_DEX.${ext}`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);}
 
