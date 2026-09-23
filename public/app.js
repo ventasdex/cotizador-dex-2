@@ -18,23 +18,49 @@ function toast(text){
   setTimeout(()=>el.remove(),2200);
 }
 
+function standardConsiderations(min='', max=''){
+  const range = min && max ? `${min} a ${max}` : min ? `${min}` : max ? `hasta ${max}` : '_ a _';
+  return [
+    'El equipo profesional involucrado estará integrado por especialistas con experiencia en el tema.',
+    'Se entregará material del curso a cada participante.',
+    'Se entrega DC-3 de la STPS y Certificado de participación.',
+    `Los precios están dados para un grupo de ${range} participantes.`,
+    'Las sesiones de entrenamiento se definen de acuerdo con la disponibilidad de las partes.',
+    'Las fechas acordadas serán flexibles siempre que los cambios se notifiquen con al menos 15 días hábiles de anticipación.',
+    'La presente cotización queda sujeta a las políticas publicadas en https://www.dexmexico.com/politicas.',
+    'DEX México se compromete a mantener la confidencialidad de la información obtenida del cliente.',
+    'Salvo que el Cliente manifieste expresamente y por escrito su negativa, la aceptación de la presente cotización autoriza a DEX Knowledge & Development México a utilizar el nombre comercial y/o logotipo del Cliente como referencia comercial, así como a realizar registros fotográficos y/o audiovisuales durante las sesiones de capacitación, para fines de evidencia de impartición, comunicación institucional, mercadotecnia y difusión de los servicios de DEX.'
+  ].join('\n');
+}
+function syncStandardConsiderations(force=false){
+  const box=$('considerations'); if(!box)return;
+  const min=$('participantsMin')?.value||'', max=$('participantsMax')?.value||'';
+  const current=box.value.trim();
+  if(force || !current || current.includes('Los precios están dados para un grupo de _ a _ participantes.') || current.includes('Los precios están dados para un grupo de hasta ')) box.value=standardConsiderations(min,max);
+  else {
+    box.value=current.replace(/Los precios están dados para un grupo de .*? participantes\./, standardConsiderations(min,max).split('\n')[3]);
+  }
+}
+
 function quoteData(){
   return {
     client:$('client').value.trim(), contact:$('contact').value.trim(), whatsapp:$('whatsapp').value.trim(), email:$('email').value.trim(), validity:$('validity').value,
     clientRequest:$('clientRequest')?.value.trim() || '',
-    title:$('title').value.trim(), modality:$('modality').value, durationTotal:$('durationTotal').value.trim(), participants:$('participants').value.trim(), accreditation:$('accreditation').value.trim(),
+    title:$('title').value.trim(), modality:$('modality').value, durationTotal:$('durationTotal').value.trim(), participants:$('participants').value.trim(), participantsMin:$('participantsMin')?.value.trim()||'', participantsMax:$('participantsMax')?.value.trim()||'', accreditation:$('accreditation').value.trim(),
     presentation:$('presentation').value.trim(), objectives:$('objectives').value.trim(), benefit:$('benefit').value.trim(), audience:$('audience').value.trim(), temario:$('temario').value.trim(), considerations:$('considerations').value.trim(), notes:$('notes').value.trim(),
     discount:Number($('discount').value)||0, iva:Number($('iva').value)||0, concepts:concepts.map(x=>({...x})), coverData, template:selectedTemplate, status:currentQuoteRecord?.estado || 'Borrador', historyId:currentQuoteRecord?.id || null, folio:currentQuoteRecord?.folio || null
   };
 }
 
 function applyData(p){
-  ['client','contact','whatsapp','email','validity','clientRequest','title','modality','durationTotal','participants','accreditation','presentation','objectives','benefit','audience','temario','considerations','notes','discount','iva'].forEach(k=>{ if(p[k]!==undefined && $(k)) $(k).value=p[k]; });
+  ['client','contact','whatsapp','email','validity','clientRequest','title','modality','durationTotal','participants','participantsMin','participantsMax','accreditation','presentation','objectives','benefit','audience','temario','considerations','notes','discount','iva'].forEach(k=>{ if(p[k]!==undefined && $(k)) $(k).value=p[k]; });
   concepts=Array.isArray(p.concepts)?p.concepts:[];
   coverData=p.coverData||'';
   selectedTemplate=p.template||'A';
   if(p.historyId || p.id || p.folio) currentQuoteRecord={id:p.historyId||p.id||null,folio:p.folio||null,estado:p.status||p.estado||'Borrador'};
   if(coverData){$('coverPreview').style.backgroundImage=`url(${coverData})`; $('coverPreview').textContent='';}
+  if(!$('considerations').value.trim()) syncStandardConsiderations(true);
+  else if(($('participantsMin')?.value||$('participantsMax')?.value)) syncStandardConsiderations();
   renderConcepts();
 }
 
@@ -52,12 +78,16 @@ function renderConcepts(){
 }
 function escapeHtml(s=''){return String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
 function updateTotals(){
-  const subtotal=concepts.reduce((s,c)=>s+(Number(c.price)||0)*(Number(c.qty)||1),0);
+  const gross=concepts.reduce((s,c)=>s+(Number(c.price)||0)*(Number(c.qty)||1),0);
   const disc=Number($('discount').value)||0, iva=Number($('iva').value)||0;
-  const total=subtotal*(1-disc/100)*(1+iva/100);
-  $('subtotal').textContent=money(subtotal); $('total').textContent=money(total);
+  const subtotal=gross*(1-disc/100);
+  const ivaAmount=subtotal*(iva/100);
+  const total=subtotal+ivaAmount;
+  $('subtotal').textContent=money(subtotal); if($('ivaAmount')) $('ivaAmount').textContent=money(ivaAmount); $('total').textContent=money(total);
 }
 $('discount').addEventListener('input',updateTotals); $('iva').addEventListener('input',updateTotals);
+if($('participantsMin')) $('participantsMin').addEventListener('input',()=>syncStandardConsiderations());
+if($('participantsMax')) $('participantsMax').addEventListener('input',()=>syncStandardConsiderations());
 
 function addConcept(c={}){ concepts.push({service:c.service||$('title').value||'Servicio DEX',duration:c.duration||'',price:Number(c.price)||0,qty:1}); renderConcepts(); }
 $('addConcept').onclick=()=>addConcept();
@@ -125,11 +155,11 @@ function applyGeneratedProposal(g){
   if(g.benefit) $('benefit').value=g.benefit;
   if(g.audience) $('audience').value=g.audience;
   const tem=normalizeGeneratedTemario(g.temario); if(tem) $('temario').value=tem;
-  if(g.considerations) $('considerations').value=Array.isArray(g.considerations)?g.considerations.join('\n'):String(g.considerations);
+  const extras=g.considerations?(Array.isArray(g.considerations)?g.considerations.join('\n'):String(g.considerations)):''; syncStandardConsiderations(true); if(extras) $('considerations').value += '\n' + extras;
   if(g.notes) $('notes').value=g.notes;
   if(g.modality && ['presencial','online','hibrida'].includes(String(g.modality).toLowerCase())) $('modality').value=String(g.modality).toLowerCase();
   if(g.durationHours) $('durationTotal').value=`${g.durationHours} horas`;
-  if(g.participants) $('participants').value=`Hasta ${g.participants} personas`;
+  if(g.participants){ $('participants').value=`${g.participants} participantes`; if($('participantsMax')) $('participantsMax').value=g.participants; syncStandardConsiderations(); }
   if(currentDexi?.price?.suggested && !concepts.length) applyDexiPrice();
   toast('Contenido profesional importado a la cotización');
 }
@@ -160,7 +190,7 @@ function applyDexiAll(){
   if(d.match){ $('title').value=d.match.title; $('temario').value=d.match.temario; const t=courseTextBasics(d.match.title); Object.entries(t).forEach(([k,v])=>$(k).value=v); }
   if(d.parsed?.modality) $('modality').value=d.parsed.modality==='online'?'online':d.parsed.modality==='presencial'?'presencial':'hibrida';
   if(d.parsed?.hours) $('durationTotal').value=`${d.parsed.hours} horas`;
-  if(d.parsed?.participants) $('participants').value=`Hasta ${d.parsed.participants} personas`;
+  if(d.parsed?.participants){ $('participants').value=`${d.parsed.participants} participantes`; if($('participantsMax')) $('participantsMax').value=d.parsed.participants; syncStandardConsiderations(); }
   applyDexiPrice(); toast('DEXI aplicó temario y referencia de precio');
 }
 function applyDexiPrice(){
@@ -234,13 +264,15 @@ function parsePreviewModules(text=''){
     else { if(!out.length) out.push({title:'Contenido',items:[]}); out[0].items.push(line.replace(/^[-•→]\s*/,'')); }
   }); if(cur)out.push(cur); return out.slice(0,12);
 }
-function totalCalc(p){const subtotal=p.concepts.reduce((s,c)=>s+(Number(c.price)||0)*(Number(c.qty)||1),0);const discounted=subtotal*(1-(Number(p.discount)||0)/100);return {subtotal,total:discounted*(1+(Number(p.iva)||0)/100)};}
+function totalCalc(p){const gross=p.concepts.reduce((s,c)=>s+(Number(c.price)||0)*(Number(c.qty)||1),0);const subtotal=gross*(1-(Number(p.discount)||0)/100);const ivaAmount=subtotal*((Number(p.iva)||0)/100);return {gross,subtotal,ivaAmount,total:subtotal+ivaAmount};}
 function previewContact(p,klass=''){
  return `<div class="pv-contact ${klass}"><div><span class="pv-contact-kicker">Contacto comercial DEX</span><b>Hablemos de tu proyecto</b><small>Estamos listos para revisar fechas, modalidad y alcance.</small></div><div class="pv-contact-grid"><span><i>WhatsApp</i><b>+52 477 294 4676</b></span><span><i>Teléfono</i><b>+52 477 510 5426</b></span><span><i>Correo</i><b>ventas@dexmexico.com</b></span><span><i>Web</i><b>www.dexmexico.com</b></span></div></div>`;
 }
-function previewA(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-a"><div class="pv-a-hero"><img src="/dex-logo-real.png"><span>PROPUESTA COMERCIAL DE CAPACITACIÓN</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1></div><div class="pv-meta">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-a-body"><p>${nl2br(p.presentation)}</p><div class="pv-cols"><section><h3>Objetivo general</h3><p>${nl2br(p.objectives)}</p><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><aside><h3>Función / beneficio principal</h3><p>${nl2br(p.benefit)}</p></aside></div><h3>Contenido programático</h3><div class="pv-mods">${mods.map((m,i)=>`<div><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></div>`).join('')}</div><div class="pv-invest"><div><small>INVERSIÓN</small><b>${escapeHtml(p.title||'Servicio DEX')}</b><span>${escapeHtml(p.durationTotal||'')}</span></div><strong>${money(t.total)}<small> MXN</small></strong></div>${previewContact(p,'pv-contact-a')}</div></div>`;}
-function previewB(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-b"><div class="pv-b-hero"><img src="/dex-logo-real.png"><span>DEX MÉXICO / PROPUESTA COMERCIAL</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1><div class="pv-pills"><b>${escapeHtml(p.modality||'—')}</b><b>${escapeHtml(p.durationTotal||'—')}</b><b>${escapeHtml(p.participants||'—')}</b><b>${escapeHtml(p.accreditation||'—')}</b></div></div><div class="pv-b-body"><div class="pv-card-grid"><section><h3>Objetivo general</h3><p>${nl2br(p.objectives)}</p></section><section><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></section><section><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><section><h3>Presentación</h3><p>${nl2br(p.presentation)}</p></section></div><h3 class="pv-title-green">Contenido programático</h3><div class="pv-b-mods">${mods.map((m,i)=>`<article><span>${String(i+1).padStart(2,'0')}</span><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-b-money"><div><small>SERVICIO COTIZADO</small><b>${escapeHtml(p.title||'Servicio DEX')}</b></div><strong>${money(t.total)}<small> MXN</small></strong></div>${previewContact(p,'pv-contact-b')}</div></div>`;}
-function previewC(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-c"><div class="pv-c-hero"><div class="pv-c-copy"><img src="/dex-logo-real.png"><span>PROPUESTA DE CAPACITACIÓN</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1></div><div class="pv-c-image" ${p.coverData?`style="background-image:url('${p.coverData}')"`:''}>${p.coverData?'':'<b>ESPACIO PARA IMAGEN</b><small>La imagen cargada se acomoda automáticamente.</small>'}</div></div><div class="pv-meta pv-meta-c">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-c-body"><p class="pv-c-lead">${nl2br(p.presentation)}</p><div class="pv-cols"><section><h3>Objetivo</h3><p>${nl2br(p.objectives)}</p><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><aside><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></aside></div><h3 class="pv-c-gold">Contenido programático</h3><div class="pv-c-mods">${mods.map(m=>`<article><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-c-money"><div><small>INVERSIÓN</small><b>${escapeHtml(p.title||'Servicio DEX')}</b><span>${escapeHtml(p.durationTotal||'')}</span></div><strong>${money(t.total)}<small> MXN</small></strong></div>${previewContact(p,'pv-contact-c')}</div></div>`;}
+function previewInvestmentBreakdown(t,p){return `<div class="pv-tax-breakdown"><span>Subtotal <b>${money(t.subtotal)}</b></span><span>IVA ${Number(p.iva)||0}% <b>${money(t.ivaAmount)}</b></span><span class="pv-tax-total">Total con IVA <b>${money(t.total)}</b></span><small>El importe total mostrado ya incluye el IVA correspondiente.</small></div>`;}
+function previewConsiderations(p){const lines=String(p.considerations||'').split(/\r?\n/).filter(Boolean);return `<div class="pv-considerations"><h3>Consideraciones</h3><ul>${lines.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></div>`;}
+function previewA(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-a"><div class="pv-a-hero"><img src="/dex-logo-real.png"><span>PROPUESTA COMERCIAL DE CAPACITACIÓN</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1></div><div class="pv-meta">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-a-body"><p>${nl2br(p.presentation)}</p><div class="pv-cols"><section><h3>Objetivo general</h3><p>${nl2br(p.objectives)}</p><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><aside><h3>Función / beneficio principal</h3><p>${nl2br(p.benefit)}</p></aside></div><h3>Contenido programático</h3><div class="pv-mods">${mods.map((m,i)=>`<div><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></div>`).join('')}</div><div class="pv-invest"><div><small>INVERSIÓN</small><b>${escapeHtml(p.title||'Servicio DEX')}</b><span>${escapeHtml(p.durationTotal||'')}</span></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-a')}</div></div>`;}
+function previewB(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-b"><div class="pv-b-hero"><img src="/dex-logo-real.png"><span>DEX MÉXICO / PROPUESTA COMERCIAL</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1><div class="pv-pills"><b>${escapeHtml(p.modality||'—')}</b><b>${escapeHtml(p.durationTotal||'—')}</b><b>${escapeHtml(p.participants||'—')}</b><b>${escapeHtml(p.accreditation||'—')}</b></div></div><div class="pv-b-body"><div class="pv-card-grid"><section><h3>Objetivo general</h3><p>${nl2br(p.objectives)}</p></section><section><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></section><section><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><section><h3>Presentación</h3><p>${nl2br(p.presentation)}</p></section></div><h3 class="pv-title-green">Contenido programático</h3><div class="pv-b-mods">${mods.map((m,i)=>`<article><span>${String(i+1).padStart(2,'0')}</span><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-b-money"><div><small>SERVICIO COTIZADO</small><b>${escapeHtml(p.title||'Servicio DEX')}</b></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-b')}</div></div>`;}
+function previewC(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-c"><div class="pv-c-hero"><div class="pv-c-copy"><img src="/dex-logo-real.png"><span>PROPUESTA DE CAPACITACIÓN</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1></div><div class="pv-c-image" ${p.coverData?`style="background-image:url('${p.coverData}')"`:''}>${p.coverData?'':'<b>ESPACIO PARA IMAGEN</b><small>La imagen cargada se acomoda automáticamente.</small>'}</div></div><div class="pv-meta pv-meta-c">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-c-body"><p class="pv-c-lead">${nl2br(p.presentation)}</p><div class="pv-cols"><section><h3>Objetivo</h3><p>${nl2br(p.objectives)}</p><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><aside><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></aside></div><h3 class="pv-c-gold">Contenido programático</h3><div class="pv-c-mods">${mods.map(m=>`<article><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-c-money"><div><small>INVERSIÓN</small><b>${escapeHtml(p.title||'Servicio DEX')}</b><span>${escapeHtml(p.durationTotal||'')}</span></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-c')}</div></div>`;}
 function renderSelectedPreview(){ const p=quoteData(); return selectedTemplate==='B'?previewB(p):selectedTemplate==='C'?previewC(p):previewA(p); }
 function previewHtml(){return `<div class="preview-shell"><div class="template-toolbar"><div><b>Elige el diseño de la cotización</b><small>La información se acomoda automáticamente al cambiar de plantilla.</small></div><div class="template-switch"><button data-template="A" class="${selectedTemplate==='A'?'active':''}">A · Corporativa</button><button data-template="B" class="${selectedTemplate==='B'?'active':''}">B · Moderna</button><button data-template="C" class="${selectedTemplate==='C'?'active':''}">C · Premium visual</button></div></div><div id="templatePreview">${renderSelectedPreview()}</div><div class="modal-actions preview-actions"><button class="btn btn-primary" id="savePreviewQuote">Guardar cotización</button><button class="btn btn-light" id="pdfBtn">Descargar PDF con este diseño</button><button class="btn btn-light" id="docxBtn">Descargar Word editable</button><button class="btn btn-light" id="backEdit">← Seguir editando</button></div></div>`;}
 function bindPreviewActions(){
@@ -255,4 +287,5 @@ if($('saveQuote')) $('saveQuote').onclick=saveQuoteToHistory;
 $('saveDraft').onclick=()=>{localStorage.setItem('dex_quote_draft',JSON.stringify(quoteData()));toast('Borrador guardado en este dispositivo');};
 $('clearBtn').onclick=()=>{if(!confirm('¿Limpiar toda la cotización?'))return;localStorage.removeItem('dex_quote_draft');location.reload();};
 const saved=localStorage.getItem('dex_quote_draft');if(saved){try{applyData(JSON.parse(saved));toast('Borrador recuperado');}catch{}}
+if(!$('considerations').value.trim()) syncStandardConsiderations(true);
 renderConcepts();

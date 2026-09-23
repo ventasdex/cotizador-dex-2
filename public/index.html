@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DEX · Cotizador 2.2</title>
+  <title>DEX · Cotizador 2.3</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark">D</div>
-      <div><strong>DEX</strong><span>Cotizador 2.2</span></div>
+      <div><strong>DEX</strong><span>Cotizador 2.3</span></div>
     </div>
     <nav class="nav">
       <button class="nav-item active" data-view="quote">✦ <span>Nueva cotización</span></button>
@@ -68,7 +68,9 @@
       <div class="grid proposal-meta-grid">
         <label class="field"><span>Modalidad</span><select id="modality"><option value="presencial">Presencial</option><option value="online">Online en vivo</option><option value="hibrida">Híbrida</option></select></label>
         <label class="field"><span>Duración total</span><input id="durationTotal" placeholder="Ej. 8 horas" /></label>
-        <label class="field"><span>Participantes</span><input id="participants" placeholder="Ej. Hasta 15 personas" /></label>
+        <label class="field"><span>Participantes</span><input id="participants" placeholder="Ej. 15 a 20 personas" /></label>
+        <label class="field"><span>Grupo mínimo</span><input id="participantsMin" type="number" min="1" placeholder="Ej. 15" /></label>
+        <label class="field"><span>Grupo máximo</span><input id="participantsMax" type="number" min="1" placeholder="Ej. 20" /></label>
         <label class="field"><span>Acreditación</span><input id="accreditation" value="DC-3 + certificado" /></label>
       </div>
 
@@ -84,11 +86,7 @@
       </div>
       <label class="field"><span>Dirigido a</span><textarea id="audience" rows="3" placeholder="Gerentes, supervisores, coordinadores y personal involucrado en..."></textarea></label>
       <label class="field"><span>Desarrollo del tema</span><small>Usa el temario DEX completo o edítalo libremente.</small><textarea id="temario" class="big" rows="13" placeholder="MÓDULO I. Fundamentos\n- Tema...\n\nMÓDULO II. Aplicación práctica..."></textarea></label>
-      <label class="field"><span>Consideraciones</span><small>Una condición por línea.</small><textarea id="considerations" rows="7">El equipo profesional involucrado estará integrado por especialistas certificados y con experiencia en el tema.
-Se entregará material del curso a cada participante en formato definido por DEX México.
-Las fechas acordadas serán flexibles siempre que los cambios se notifiquen con al menos 15 días hábiles de anticipación.
-La presente cotización queda sujeta a las políticas publicadas en https://dexmexico.com/politicas.
-DEX México se compromete a mantener la confidencialidad de la información obtenida del cliente.</textarea></label>
+      <label class="field"><span>Consideraciones</span><small>Estas condiciones se cargan como estándar DEX y pueden editarse cuando una propuesta lo requiera.</small><textarea id="considerations" rows="12"></textarea></label>
     </section>
 
     <section class="card">
@@ -111,8 +109,10 @@ DEX México se compromete a mantener la confidencialidad de la información obte
         <div class="summary-row"><span>Subtotal</span><b id="subtotal">$0.00</b></div>
         <div class="summary-row"><span>Descuento</span><label class="pct"><input id="discount" type="number" value="0" min="0" max="100"><span>%</span></label></div>
         <div class="summary-row"><span>IVA</span><label class="pct"><input id="iva" type="number" value="16" min="0" max="100"><span>%</span></label></div>
+        <div class="summary-row"><span>Importe IVA</span><b id="ivaAmount">$0.00</b></div>
         <hr>
-        <div class="total-row"><span>Total</span><b id="total">$0.00</b></div>
+        <div class="total-row"><span>Total con IVA</span><b id="total">$0.00</b></div>
+        <div class="tax-note">El importe total mostrado ya incluye el IVA correspondiente.</div>
         <button class="btn btn-primary full" id="generateBtn">Generar propuesta</button>
         <button class="btn btn-light full" id="saveQuote">Guardar cotización</button>
         <button class="btn btn-light full" id="saveDraft">Guardar borrador local</button>
