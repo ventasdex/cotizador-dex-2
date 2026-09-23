@@ -1,4 +1,4 @@
--- Cotizador DEX 2.2 · Historial compartido de cotizaciones
+-- Cotizador DEX 2.3 · Historial compartido de cotizaciones
 -- Ejecutar una sola vez en Supabase > SQL Editor.
 
 create table if not exists public.dex_cotizaciones (

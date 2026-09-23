@@ -220,7 +220,7 @@ function buildChatGptPrompt(query, match, parsed) {
   const base = match
     ? `TEMARIO DEX DE REFERENCIA (úsalo como base, adáptalo y conserva profundidad técnica):\n${match.temario}`
     : 'No existe un temario DEX suficientemente equivalente. Desarrolla uno profesional desde cero y evita inventar normas, ediciones o requisitos.';
-  return `Actúa como diseñador instruccional senior y redactor técnico-comercial de DEX México.\n\nSOLICITUD DEL CLIENTE (tal como la recibió la vendedora):\n${query}\n\nDATOS DETECTADOS:\n- Duración: ${parsed.hours || 'por definir'} horas\n- Modalidad: ${parsed.modality || 'por definir'}\n- Participantes: ${parsed.participants || 'por definir'}\n\n${base}\n\nOBJETIVO: construir una propuesta lista para que la vendedora solo supervise y haga correcciones mínimas.\n\nREGLAS DE PROFUNDIDAD DEL TEMARIO:\n- 4 horas: mínimo 3 módulos y 9 subtemas.\n- 8 horas: mínimo 4 módulos y 12 subtemas.\n- 12 horas: mínimo 5 módulos y 15 subtemas.\n- 16 horas: mínimo 6 módulos y 18 subtemas.\n- Más de 16 horas: aumenta módulos, ejercicios, casos y aplicación práctica proporcionalmente.\n- El contenido debe ser técnico, concreto y coherente con la duración; evita frases genéricas o temarios superficiales.\n\nDEVUELVE ÚNICAMENTE JSON VÁLIDO, SIN markdown, SIN explicaciones adicionales, con esta estructura exacta:\n{\n  "title": "Título profesional del curso o servicio",\n  "presentation": "Presentación comercial de 1 a 2 párrafos",\n  "objectives": ["Objetivo específico 1", "Objetivo específico 2", "Objetivo específico 3", "Objetivo específico 4"],\n  "benefit": "Función o beneficio principal del servicio",\n  "audience": "Perfil de participantes a quienes va dirigido",\n  "modality": "presencial|online|hibrida|por definir",\n  "durationHours": ${parsed.hours || 'null'},\n  "participants": ${parsed.participants || 'null'},\n  "temario": "MÓDULO I. ...\\n- ...\\n- ...\\n\\nMÓDULO II. ...",\n  "considerations": ["Condición 1", "Condición 2"],\n  "notes": "Metodología, entregables o notas relevantes si aplican"\n}\n\nNo incluyas precios. El precio lo calcula DEXI con información comercial interna.`;
+  return `Actúa como diseñador instruccional senior y redactor técnico-comercial de DEX México.\n\nSOLICITUD DEL CLIENTE (tal como la recibió la vendedora):\n${query}\n\nDATOS DETECTADOS:\n- Duración: ${parsed.hours || 'por definir'} horas\n- Modalidad: ${parsed.modality || 'por definir'}\n- Participantes: ${parsed.participants || 'por definir'}\n\n${base}\n\nOBJETIVO: construir una propuesta lista para que la vendedora solo supervise y haga correcciones mínimas.\n\nREGLAS DE PROFUNDIDAD DEL TEMARIO:\n- 4 horas: mínimo 3 módulos y 9 subtemas.\n- 8 horas: mínimo 4 módulos y 12 subtemas.\n- 12 horas: mínimo 5 módulos y 15 subtemas.\n- 16 horas: mínimo 6 módulos y 18 subtemas.\n- Más de 16 horas: aumenta módulos, ejercicios, casos y aplicación práctica proporcionalmente.\n- El contenido debe ser técnico, concreto y coherente con la duración; evita frases genéricas o temarios superficiales.\n\nDEVUELVE ÚNICAMENTE JSON VÁLIDO, SIN markdown, SIN explicaciones adicionales, con esta estructura exacta:\n{\n  "title": "Título profesional del curso o servicio",\n  "presentation": "Presentación comercial de 1 a 2 párrafos",\n  "objectives": ["Objetivo específico 1", "Objetivo específico 2", "Objetivo específico 3", "Objetivo específico 4"],\n  "benefit": "Función o beneficio principal del servicio",\n  "audience": "Perfil de participantes a quienes va dirigido",\n  "modality": "presencial|online|hibrida|por definir",\n  "durationHours": ${parsed.hours || 'null'},\n  "participants": ${parsed.participants || 'null'},\n  "temario": "MÓDULO I. ...\\n- ...\\n- ...\\n\\nMÓDULO II. ...",\n  "considerations": ["Solo consideraciones adicionales específicas del servicio, si aplican"],\n  "notes": "Metodología, entregables o notas relevantes si aplican"\n}\n\nNo incluyas precios. El precio lo calcula DEXI con información comercial interna. Las consideraciones comerciales estándar de DEX se insertan automáticamente; usa "considerations" solo para condiciones adicionales específicas del servicio.`;
 }
 
 app.get('/api/meta', (_req,res) => {
@@ -332,6 +332,24 @@ function proposalTotals(p) {
   const afterDiscount = subtotal * (1-discountPct/100);
   const iva = afterDiscount * ivaPct/100;
   return { subtotal, afterDiscount, iva, total: afterDiscount+iva };
+}
+
+
+function standardConsiderationsServer(p={}) {
+  const min = String(p.participantsMin || '').trim();
+  const max = String(p.participantsMax || '').trim();
+  const range = min && max ? `${min} a ${max}` : min ? min : max ? `hasta ${max}` : '_ a _';
+  return [
+    'El equipo profesional involucrado estará integrado por especialistas con experiencia en el tema.',
+    'Se entregará material del curso a cada participante.',
+    'Se entrega DC-3 de la STPS y Certificado de participación.',
+    `Los precios están dados para un grupo de ${range} participantes.`,
+    'Las sesiones de entrenamiento se definen de acuerdo con la disponibilidad de las partes.',
+    'Las fechas acordadas serán flexibles siempre que los cambios se notifiquen con al menos 15 días hábiles de anticipación.',
+    'La presente cotización queda sujeta a las políticas publicadas en https://www.dexmexico.com/politicas.',
+    'DEX México se compromete a mantener la confidencialidad de la información obtenida del cliente.',
+    'Salvo que el Cliente manifieste expresamente y por escrito su negativa, la aceptación de la presente cotización autoriza a DEX Knowledge & Development México a utilizar el nombre comercial y/o logotipo del Cliente como referencia comercial, así como a realizar registros fotográficos y/o audiovisuales durante las sesiones de capacitación, para fines de evidencia de impartición, comunicación institucional, mercadotecnia y difusión de los servicios de DEX.'
+  ].join('\n');
 }
 
 function parseModules(text='') {
@@ -452,24 +470,63 @@ function drawContactPanel(doc, p, y, palette, variant='A') {
     doc.fillColor(fg).fontSize(7.2).text(c[1],xx+6,yy+16,{width:cw-12});
   });
 }
+function drawTaxBreakdown(doc, p, totals, y, palette, variant='A') {
+  const x=40,w=515,cell=w/3;
+  const bg=variant==='C'?'#fffaf0':variant==='B'?'#f4f8f6':'#f3fafb';
+  const accent=variant==='C'?palette.gold:palette.accent;
+  doc.roundedRect(x,y,w,62,8).fill(bg).strokeColor(palette.line).lineWidth(.7).stroke();
+  const items=[
+    ['SUBTOTAL',money(totals.afterDiscount)],
+    [`IVA ${Number(p.iva ?? 16)||0}%`,money(totals.iva)],
+    ['TOTAL CON IVA',money(totals.total)]
+  ];
+  items.forEach((it,i)=>{
+    const xx=x+i*cell;
+    if(i>0) doc.moveTo(xx,y+10).lineTo(xx,y+52).strokeColor(palette.line).lineWidth(.6).stroke();
+    doc.fillColor(accent).font('Helvetica-Bold').fontSize(6.6).text(it[0],xx+10,y+13,{width:cell-20,align:'center'});
+    doc.fillColor(palette.dark).fontSize(i===2?13.5:11).text(it[1],xx+10,y+31,{width:cell-20,align:'center'});
+  });
+  doc.fillColor(palette.muted).font('Helvetica').fontSize(7.2).text('El importe total mostrado ya incluye el IVA correspondiente.',x,y+69,{width:w,align:'right'});
+  return y+88;
+}
+
 function addClosingPage(doc, p, totals, palette, variant='A') {
   doc.addPage({size:'A4',margin:0}); let y=48;
   doc.fillColor(variant==='C'?palette.gold:palette.accent).font('Helvetica-Bold').fontSize(8).text('03 | PROPUESTA ECONÓMICA Y CIERRE',40,y);
-  y+=22; doc.fillColor(palette.dark).fontSize(20).text('Inversión, condiciones y contacto',40,y); y+=40;
+  y+=22; doc.fillColor(palette.dark).fontSize(20).text('Inversión, consideraciones y contacto',40,y); y+=40;
   if(variant==='B'){
-    doc.roundedRect(40,y,515,116,14).fill(palette.dark); doc.fillColor('#87dac9').fontSize(7).text('SERVICIO COTIZADO',58,y+18); doc.fillColor('#fff').fontSize(14).text(p.title||'Servicio DEX',58,y+34,{width:300}); doc.fontSize(9).text(`${p.durationTotal||''} · ${p.participants||''}`,58,y+59,{width:300}); doc.fillColor('#e7bb59').fontSize(27).font('Helvetica-Bold').text(money(totals.total),360,y+38,{width:175,align:'right'}); doc.fontSize(9).fillColor('#fff').text('MXN',450,y+73,{width:85,align:'right'});
+    doc.roundedRect(40,y,515,105,14).fill(palette.dark); doc.fillColor('#87dac9').fontSize(7).text('SERVICIO COTIZADO',58,y+16); doc.fillColor('#fff').fontSize(14).text(p.title||'Servicio DEX',58,y+32,{width:300}); doc.fontSize(9).text(`${p.durationTotal||''} · ${p.participants||''}`,58,y+57,{width:300}); doc.fillColor('#e7bb59').fontSize(24).font('Helvetica-Bold').text(money(totals.total),360,y+31,{width:175,align:'right'}); doc.fontSize(8).fillColor('#fff').text('TOTAL CON IVA',430,y+68,{width:105,align:'right'});
   } else if(variant==='C'){
-    doc.roundedRect(40,y,515,116,12).fill(palette.dark); doc.fillColor('#dbc995').fontSize(7).text('INVERSIÓN',58,y+18); doc.fillColor('#fff').fontSize(14).text(p.title||'Servicio DEX',58,y+34,{width:300}); doc.fontSize(9).text(`${p.durationTotal||''} · ${p.participants||''}`,58,y+59,{width:300}); doc.fillColor('#f1d28f').fontSize(27).font('Helvetica-Bold').text(money(totals.total),360,y+38,{width:175,align:'right'}); doc.fontSize(9).fillColor('#fff').text('MXN',450,y+73,{width:85,align:'right'});
+    doc.roundedRect(40,y,515,105,12).fill(palette.dark); doc.fillColor('#dbc995').fontSize(7).text('INVERSIÓN',58,y+16); doc.fillColor('#fff').fontSize(14).text(p.title||'Servicio DEX',58,y+32,{width:300}); doc.fontSize(9).text(`${p.durationTotal||''} · ${p.participants||''}`,58,y+57,{width:300}); doc.fillColor('#f1d28f').fontSize(24).font('Helvetica-Bold').text(money(totals.total),360,y+31,{width:175,align:'right'}); doc.fontSize(8).fillColor('#fff').text('TOTAL CON IVA',430,y+68,{width:105,align:'right'});
   } else {
-    doc.rect(40,y,340,116).fill(palette.dark); doc.rect(380,y,175,116).fill(palette.accent); doc.fillColor('#75d7dd').fontSize(7).text('SERVICIO COTIZADO',58,y+18); doc.fillColor('#fff').fontSize(14).text(p.title||'Servicio DEX',58,y+34,{width:300}); doc.fontSize(9).text(`${p.durationTotal||''} · ${p.participants||''}`,58,y+61,{width:300}); doc.fontSize(26).font('Helvetica-Bold').text(money(totals.total),390,y+35,{width:155,align:'center'}); doc.fontSize(9).text('MXN',390,y+74,{width:155,align:'center'});
+    doc.rect(40,y,340,105).fill(palette.dark); doc.rect(380,y,175,105).fill(palette.accent); doc.fillColor('#75d7dd').fontSize(7).text('SERVICIO COTIZADO',58,y+16); doc.fillColor('#fff').fontSize(14).text(p.title||'Servicio DEX',58,y+32,{width:300}); doc.fontSize(9).text(`${p.durationTotal||''} · ${p.participants||''}`,58,y+58,{width:300}); doc.fontSize(23).font('Helvetica-Bold').text(money(totals.total),390,y+29,{width:155,align:'center'}); doc.fontSize(8).text('TOTAL CON IVA',390,y+67,{width:155,align:'center'});
   }
-  y+=136;
-  doc.fillColor(variant==='C'?palette.gold:palette.accent).font('Helvetica-Bold').fontSize(8).text('CONDICIONES COMERCIALES',40,y); y+=17;
-  const cond=(p.considerations||'').split(/\r?\n/).filter(Boolean).slice(0,8);
-  doc.font('Helvetica').fontSize(8.5).fillColor(palette.ink);
-  cond.forEach(line=>{ doc.text('• '+line,48,y,{width:499,lineGap:1}); y=doc.y+5; });
-  if(p.notes){ y+=4; doc.font('Helvetica-Bold').fontSize(8).fillColor(variant==='C'?palette.gold:palette.accent).text('NOTAS',40,y); y+=15; doc.font('Helvetica').fontSize(8.5).fillColor(palette.ink).text(p.notes,48,y,{width:499,lineGap:1}); y=doc.y+12; }
-  if(y>660) y=660;
+  y+=118;
+  y=drawTaxBreakdown(doc,p,totals,y,palette,variant);
+  doc.fillColor(variant==='C'?palette.gold:palette.accent).font('Helvetica-Bold').fontSize(8).text('CONSIDERACIONES',40,y); y+=17;
+  const cond=(p.considerations||standardConsiderationsServer(p)).split(/\r?\n/).filter(Boolean);
+  doc.font('Helvetica').fontSize(7.7).fillColor(palette.ink);
+  for(const line of cond){
+    const txt='• '+line;
+    const h=doc.heightOfString(txt,{width:499,lineGap:1})+5;
+    if(y+h>730){
+      drawFooter(doc,'DEX México · Consideraciones');
+      doc.addPage({size:'A4',margin:0});
+      y=58;
+      doc.fillColor(variant==='C'?palette.gold:palette.accent).font('Helvetica-Bold').fontSize(8).text('CONSIDERACIONES (CONTINUACIÓN)',40,y);
+      y+=18;
+      doc.font('Helvetica').fontSize(7.7).fillColor(palette.ink);
+    }
+    doc.text(txt,48,y,{width:499,lineGap:1}); y=doc.y+4;
+  }
+  if(p.notes){
+    y+=4;
+    const noteH=doc.heightOfString(p.notes,{width:499,lineGap:1})+32;
+    if(y+noteH>730){ drawFooter(doc,'DEX México · Consideraciones'); doc.addPage({size:'A4',margin:0}); y=58; }
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(variant==='C'?palette.gold:palette.accent).text('NOTAS',40,y); y+=15;
+    doc.font('Helvetica').fontSize(8).fillColor(palette.ink).text(p.notes,48,y,{width:499,lineGap:1}); y=doc.y+10;
+  }
+  if(y+124>790){ drawFooter(doc,'DEX México · Consideraciones'); doc.addPage({size:'A4',margin:0}); y=62; }
   drawContactPanel(doc,p,y,palette,variant);
   drawFooter(doc,'DEX México · Cierre comercial');
 }
@@ -542,7 +599,7 @@ app.post('/api/export/docx', async (req,res) => {
     addSection('Función / beneficio principal', p.benefit);
     addSection('Dirigido a', p.audience);
     addSection('Desarrollo del tema', p.temario);
-    addSection('Consideraciones', p.considerations);
+    addSection('Consideraciones', p.considerations || standardConsiderationsServer(p));
     addSection('Notas de la propuesta', p.notes);
 
     children.push(new Paragraph({ text:'Inversión', heading:HeadingLevel.HEADING_2 }));
@@ -552,10 +609,11 @@ app.post('/api/export/docx', async (req,res) => {
       c.service || '', c.duration || '', money(c.price), money((Number(c.price)||0)*(Number(c.qty)||1))
     ].map(x => new TableCell({children:[new Paragraph(String(x))],borders:{top:border,bottom:border,left:border,right:border}})) })));
     children.push(new Table({ width:{size:100,type:WidthType.PERCENTAGE}, rows }));
-    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, spacing:{before:220}, children:[new TextRun(`Subtotal: ${money(totals.subtotal)}`)] }));
-    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, text:`Descuento: ${Number(p.discount)||0}%` }));
-    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, text:`IVA: ${Number(p.iva ?? 16)}%` }));
-    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, children:[new TextRun({text:`Total: ${money(totals.total)}`,bold:true,size:30})] }));
+    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, spacing:{before:220}, children:[new TextRun(`Subtotal: ${money(totals.afterDiscount)}`)] }));
+    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, text:`Descuento aplicado: ${Number(p.discount)||0}%` }));
+    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, text:`IVA ${Number(p.iva ?? 16)}%: ${money(totals.iva)}` }));
+    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, children:[new TextRun({text:`Total con IVA: ${money(totals.total)}`,bold:true,size:30})] }));
+    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, text:'El importe total mostrado ya incluye el IVA correspondiente.' }));
     children.push(new Paragraph({ alignment:AlignmentType.CENTER, spacing:{before:400}, text:'DEX México · www.dexmexico.com' }));
 
     const doc = new Document({ sections:[{ properties:{}, children }] });
@@ -571,4 +629,4 @@ app.post('/api/export/docx', async (req,res) => {
 
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 2.2 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 2.4 en puerto ${PORT}`));

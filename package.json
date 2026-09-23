@@ -1,8 +1,8 @@
 {
   "name": "cotizador-dex-2",
-  "version": "2.2.0",
+  "version": "2.4.0",
   "private": true,
-  "description": "Cotizador DEX 2.2 con DEXI asistido e histórico persistente opcional",
+  "description": "Cotizador DEX 2.4 con desglose fiscal completo y consideraciones estándar DEX en las tres plantillas",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
