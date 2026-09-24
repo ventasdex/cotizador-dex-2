@@ -123,22 +123,15 @@ $('findTemplate').onclick=()=>searchTemplate($('title').value);
 
 function openDexi(initialText=''){
   const request = initialText || $('clientRequest')?.value.trim() || '';
-  showModal(`<div class="dexi-head"><h2>✦ DEXI</h2><p>Convierte lo que pidió el cliente en una propuesta profesional. Sin API de pago por ahora.</p></div>
+  showModal(`<div class="dexi-head"><h2>✦ DEXI</h2><p>Convierte lo que pidió el cliente en una propuesta profesional usando la biblioteca DEX, históricos y OpenAI.</p></div>
   <p><b>Cuéntame qué solicitó el cliente.</b> Puedes escribirlo como te lo dijeron por teléfono, WhatsApp o correo.</p>
-  <div class="dexi-input"><textarea id="dexiQuery" placeholder="Ej. El cliente necesita un curso de solución de problemas...">${escapeHtml(request)}</textarea><button class="btn btn-dexi" id="dexiGo">Analizar solicitud</button></div>
-  <div id="dexiResult"><div class="dexi-workflow"><div class="dexi-step"><span class="dexi-step-num">1</span><div><b>Entender solicitud</b><small>Duración, modalidad, participantes y necesidad.</small></div></div><div class="dexi-step"><span class="dexi-step-num">2</span><div><b>Buscar referencias DEX</b><small>Temarios, matriz de precios e históricos.</small></div></div><div class="dexi-step"><span class="dexi-step-num">3</span><div><b>Construir contenido</b><small>Si es un tema nuevo, DEXI prepara una generación estructurada para ChatGPT y la importa en un solo paso.</small></div></div></div></div>`);
+  <div class="dexi-input"><textarea id="dexiQuery" placeholder="Ej. El cliente necesita un curso de solución de problemas...">${escapeHtml(request)}</textarea><button class="btn btn-dexi" id="dexiGo">✦ Construir propuesta</button></div>
+  <div id="dexiResult"><div class="dexi-workflow"><div class="dexi-step"><span class="dexi-step-num">1</span><div><b>Entender solicitud</b><small>Duración, modalidad, participantes y necesidad.</small></div></div><div class="dexi-step"><span class="dexi-step-num">2</span><div><b>Consultar DEX</b><small>Temarios, matriz de precios e históricos.</small></div></div><div class="dexi-step"><span class="dexi-step-num">3</span><div><b>Generar propuesta</b><small>OpenAI construye o adapta el contenido con las reglas técnicas de DEX.</small></div></div></div></div>`);
   $('dexiGo').onclick=runDexi;
 }
 $('openDexi').onclick=()=>openDexi();
 if($('buildWithDexi')) $('buildWithDexi').onclick=()=>openDexi($('clientRequest').value);
 
-function extractDexiJson(raw=''){
-  let text=String(raw).trim();
-  text=text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
-  const first=text.indexOf('{'), last=text.lastIndexOf('}');
-  if(first>=0 && last>first) text=text.slice(first,last+1);
-  return JSON.parse(text);
-}
 function normalizeGeneratedTemario(value){
   if(typeof value==='string') return value;
   if(Array.isArray(value)) return value.map((m,i)=>{
@@ -151,38 +144,52 @@ function normalizeGeneratedTemario(value){
 function applyGeneratedProposal(g){
   if(g.title) $('title').value=g.title;
   if(g.presentation) $('presentation').value=g.presentation;
-  if(g.objectives) $('objectives').value=Array.isArray(g.objectives)?g.objectives.map(x=>'• '+x).join('\n'):String(g.objectives);
+  const objectiveLines=[];
+  if(g.objectiveGeneral) objectiveLines.push(`OBJETIVO GENERAL\n${g.objectiveGeneral}`);
+  if(g.objectives){
+    const list=Array.isArray(g.objectives)?g.objectives:[String(g.objectives)];
+    if(list.length) objectiveLines.push(`OBJETIVOS ESPECÍFICOS\n${list.map(x=>'• '+x).join('\n')}`);
+  }
+  if(objectiveLines.length) $('objectives').value=objectiveLines.join('\n\n');
   if(g.benefit) $('benefit').value=g.benefit;
   if(g.audience) $('audience').value=g.audience;
   const tem=normalizeGeneratedTemario(g.temario); if(tem) $('temario').value=tem;
-  const extras=g.considerations?(Array.isArray(g.considerations)?g.considerations.join('\n'):String(g.considerations)):''; syncStandardConsiderations(true); if(extras) $('considerations').value += '\n' + extras;
+  syncStandardConsiderations(true);
+  const extras=g.considerations?(Array.isArray(g.considerations)?g.considerations.filter(Boolean).join('\n'):String(g.considerations)):'';
+  if(extras) $('considerations').value += '\n' + extras;
   if(g.notes) $('notes').value=g.notes;
   if(g.modality && ['presencial','online','hibrida'].includes(String(g.modality).toLowerCase())) $('modality').value=String(g.modality).toLowerCase();
   if(g.durationHours) $('durationTotal').value=`${g.durationHours} horas`;
   if(g.participants){ $('participants').value=`${g.participants} participantes`; if($('participantsMax')) $('participantsMax').value=g.participants; syncStandardConsiderations(); }
   if(currentDexi?.price?.suggested && !concepts.length) applyDexiPrice();
-  toast('Contenido profesional importado a la cotización');
+  toast('DEXI aplicó la propuesta profesional');
 }
 
 async function runDexi(){
   const query=$('dexiQuery').value.trim(); if(!query)return toast('Describe primero lo que pidió el cliente.');
   if($('clientRequest')) $('clientRequest').value=query;
-  const target=$('dexiResult'); target.innerHTML='<p>DEXI está analizando la solicitud y buscando referencias…</p>';
+  const target=$('dexiResult');
+  target.innerHTML='<div class="result-card"><h3>DEXI está construyendo la propuesta…</h3><p>Estoy consultando referencias DEX y generando el contenido profesional. Puede tardar unos segundos.</p></div>';
   try{
-    currentDexi=await api('/api/dexi/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query})});
-    const d=currentDexi, m=d.match, p=d.price;
+    currentDexi=await api('/api/dexi/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query})});
+    const d=currentDexi, m=d.match, p=d.price, g=d.generation;
     const detected=[d.parsed?.hours?`${d.parsed.hours} h`:null,d.parsed?.participants?`${d.parsed.participants} participantes`:null,d.parsed?.modality||null].filter(Boolean).join(' · ') || 'Datos por completar';
+    const matchLabel=d.matchType==='direct'?'Coincidencia directa':d.matchType==='partial'?'Referencia parcial':'Tema nuevo';
+    const matchHtml=m?`<span class="pill">${matchLabel} · ${(m.score*100).toFixed(0)}%</span><b>${escapeHtml(m.title)}</b><p>${d.matchType==='direct'?'DEXI utilizó esta referencia como base principal y la adaptó a la solicitud.':'DEXI la usó solo como orientación para evitar mezclar contenidos que no correspondan.'}</p>`:`<span class="pill">Tema nuevo</span><p>No encontré una referencia DEX suficientemente cercana. DEXI desarrolló el contenido desde cero.</p>`;
+    const previewModules=Array.isArray(g?.temario)?g.temario.slice(0,4).map(x=>`<li><b>${escapeHtml(x.title||'Módulo')}</b> · ${(x.items||[]).length} temas</li>`).join(''):'';
     target.innerHTML=`
-      <div class="result-card"><h3>Solicitud entendida</h3><span class="pill">${escapeHtml(detected)}</span><p>DEXI conservará esta solicitud dentro del histórico de la cotización.</p></div>
-      <div class="result-card"><h3>Referencia DEX</h3>${m?`<span class="pill">Coincidencia ${(m.score*100).toFixed(0)}%</span><b>${escapeHtml(m.title)}</b><p>Encontré un temario DEX que puede utilizarse como base y adaptarse a lo solicitado.</p>`:'<p>Es un tema nuevo o no hay una coincidencia suficientemente sólida. DEXI preparará el contenido profesional desde cero mediante el flujo gratuito con ChatGPT.</p>'}</div>
-      <div class="result-card"><h3>Precio</h3>${p.suggested?`<div class="price-big">${money(p.suggested)} + IVA</div><span class="pill">Confianza ${p.confidence}</span><p>Rango sugerido: <b>${money(p.min)} – ${money(p.max)}</b></p>${p.matrix?`<p>Matriz DEX: ${escapeHtml(p.matrix.course)} · ${money(p.matrix.adjustedPrice)}</p>`:''}${p.historicalMedian?`<p>Mediana histórica comparable: ${money(p.historicalMedian)} · ${p.comparables.length} referencia(s)</p>`:''}`:'<p>Aún no hay suficientes referencias para sugerir un precio automático. El contenido sí puede construirse.</p>'}</div>
-      <div class="modal-actions">${m?'<button class="btn btn-light" id="applyDexi">Usar referencia DEX como base</button>':''}${p.suggested?'<button class="btn btn-light" id="applyPrice">Aplicar precio sugerido</button>':''}<button class="btn btn-dexi" id="copyPrompt">1 · Copiar instrucción para ChatGPT</button></div>
-      <div class="dexi-import"><h3>2 · Importar la propuesta generada</h3><p class="modal-sub">Pega aquí la respuesta que te entregue ChatGPT. DEXI llenará automáticamente título, presentación, objetivos, beneficio, dirigido a y temario.</p><textarea id="dexiJson" placeholder='Pega aquí el JSON completo que entregue ChatGPT...'></textarea><div class="modal-actions"><button class="btn btn-primary" id="importDexi">Importar y llenar cotización</button></div></div>`;
-    if($('applyDexi')) $('applyDexi').onclick=()=>{ applyDexiAll(); };
-    if($('applyPrice')) $('applyPrice').onclick=()=>{ applyDexiPrice(); };
-    $('copyPrompt').onclick=async()=>{ try{await navigator.clipboard.writeText(d.prompt);toast('Instrucción copiada. Pégala en ChatGPT.');}catch{toast('No se pudo copiar automáticamente.');} };
-    $('importDexi').onclick=()=>{try{const g=extractDexiJson($('dexiJson').value);applyGeneratedProposal(g);hideModal();}catch(e){toast('No pude leer la respuesta. Verifica que pegaste el JSON completo.');}};
-  }catch(e){target.innerHTML=`<p>${escapeHtml(e.message)}</p>`;}
+      <div class="result-card"><h3>Solicitud entendida</h3><span class="pill">${escapeHtml(detected)}</span></div>
+      <div class="result-card"><h3>Referencia DEX</h3>${matchHtml}</div>
+      <div class="result-card"><h3>Propuesta generada</h3><b>${escapeHtml(g.title||'Propuesta DEX')}</b><p>${escapeHtml(g.presentation||'')}</p>${previewModules?`<ul>${previewModules}</ul>`:''}<p><small>Generada con ${escapeHtml(d.ai?.model||'OpenAI')}.</small></p></div>
+      <div class="result-card"><h3>Precio DEXI</h3>${p.suggested?`<div class="price-big">${money(p.suggested)} + IVA</div><span class="pill">Confianza ${p.confidence}</span><p>Rango sugerido: <b>${money(p.min)} – ${money(p.max)}</b></p>${p.matrix?`<p>Matriz DEX: ${escapeHtml(p.matrix.course)} · ${money(p.matrix.adjustedPrice)}</p>`:''}${p.historicalMedian?`<p>Mediana histórica comparable: ${money(p.historicalMedian)} · ${p.comparables.length} referencia(s)</p>`:''}`:'<p>Aún no hay suficientes referencias internas para sugerir un precio automático.</p>'}</div>
+      <div class="modal-actions"><button class="btn btn-dexi" id="applyAiProposal">✦ Aplicar propuesta completa</button>${p.suggested?'<button class="btn btn-light" id="applyPrice">Aplicar precio sugerido</button>':''}<button class="btn btn-light" id="closeDexiReview">Revisar después</button></div>`;
+    $('applyAiProposal').onclick=()=>{applyGeneratedProposal(g);hideModal();};
+    if($('applyPrice')) $('applyPrice').onclick=()=>applyDexiPrice();
+    $('closeDexiReview').onclick=hideModal;
+  }catch(e){
+    target.innerHTML=`<div class="result-card"><h3>No pude generar la propuesta</h3><p>${escapeHtml(e.message)}</p><p>Revisa la conexión de OpenAI y vuelve a intentarlo.</p></div><div class="modal-actions"><button class="btn btn-dexi" id="retryDexi">Reintentar</button></div>`;
+    if($('retryDexi')) $('retryDexi').onclick=runDexi;
+  }
 }
 
 function applyDexiAll(){
