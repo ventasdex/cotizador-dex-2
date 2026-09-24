@@ -34,6 +34,11 @@ const SUPABASE_URL = String(process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
 const HAS_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 
+// Generación profesional DEXI con OpenAI. La clave vive solo en Render.
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '');
+const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.6-luna');
+const HAS_OPENAI = Boolean(OPENAI_API_KEY);
+
 async function supabaseFetch(resource, options = {}) {
   if (!HAS_SUPABASE) throw new Error('SUPABASE_NOT_CONFIGURED');
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${resource}`, {
@@ -224,7 +229,7 @@ function buildChatGptPrompt(query, match, parsed) {
 }
 
 app.get('/api/meta', (_req,res) => {
-  res.json({ temarios: TEMARIOS.length, precios: PRECIOS.length, historicos: HISTORICOS.length, consultores: CONSULTORES.length, aiPaid: false, persistentHistory: HAS_SUPABASE });
+  res.json({ temarios: TEMARIOS.length, precios: PRECIOS.length, historicos: HISTORICOS.length, consultores: CONSULTORES.length, aiPaid: HAS_OPENAI, aiModel: HAS_OPENAI ? OPENAI_MODEL : null, persistentHistory: HAS_SUPABASE });
 });
 
 app.get('/api/library', (req,res) => {
@@ -254,6 +259,161 @@ app.post('/api/dexi/suggest', (req,res) => {
   const price = getPriceSuggestion(query, match?.title, parsed);
   const prompt = buildChatGptPrompt(query, match, parsed);
   res.json({ parsed, match, price, prompt });
+});
+
+
+function dexiMatchInfo(query) {
+  const best = topMatches(query, TEMARIOS, 'title', 1)[0] || null;
+  if (!best) return { type:'new', match:null };
+  const score = Number(best.score.toFixed(3));
+  // Evita forzar temas lejanos: una coincidencia baja solo sirve para detectar que el tema es nuevo.
+  if (score >= 0.55) return { type:'direct', match:{...best.item, score} };
+  if (score >= 0.30) return { type:'partial', match:{...best.item, score} };
+  return { type:'new', match:null };
+}
+
+function dexiDepthRules(hours) {
+  const h = Number(hours || 0);
+  if (!h) return 'Si la duración aún no está definida, desarrolla entre 4 y 6 módulos con profundidad suficiente y evita contenido de relleno.';
+  if (h <= 4) return 'Desarrolla mínimo 3 módulos y entre 9 y 12 subtemas en total.';
+  if (h <= 8) return 'Desarrolla entre 4 y 5 módulos y entre 12 y 18 subtemas en total.';
+  if (h <= 12) return 'Desarrolla entre 5 y 6 módulos y entre 15 y 22 subtemas en total.';
+  if (h <= 16) return 'Desarrolla entre 6 y 8 módulos y entre 20 y 28 subtemas en total.';
+  if (h <= 24) return 'Desarrolla entre 8 y 10 módulos y entre 28 y 40 subtemas en total.';
+  return 'Desarrolla entre 10 y 14 módulos y entre 40 y 60 subtemas en total, ajustando la profundidad al número de horas.';
+}
+
+function dexiSystemPrompt() {
+  return `Eres DEXI, asistente técnico-comercial de DEX México, empresa de capacitación y consultoría industrial. Tu trabajo es convertir una solicitud comercial informal en una propuesta de capacitación profesional, específica, técnicamente coherente y lista para revisión humana.
+
+REGLAS INNEGOCIABLES:
+- Redacta en español profesional, natural y concreto; evita frases genéricas y repetitivas.
+- No inventes precios. DEX calcula precios con su motor comercial interno.
+- No inventes ediciones de normas, cláusulas, certificaciones, acreditaciones ni requisitos que el cliente no haya solicitado o que la referencia proporcionada no sustente.
+- Si existe una referencia DEX directa, úsala como base y adáptala a la necesidad real del cliente.
+- Si la referencia es parcial, úsala solo como orientación de estructura/profundidad; no mezcles contenido técnico que no corresponda.
+- Si el tema es nuevo, desarrolla el contenido desde cero con criterio de diseñador instruccional senior.
+- El temario debe ser proporcional a la duración, sin inflarlo artificialmente y sin quedarse superficial.
+- El objetivo general debe expresar el resultado global del entrenamiento. Los objetivos específicos deben ser accionables.
+- La presentación debe explicar el contexto, propósito y valor del entrenamiento, no repetir literalmente el objetivo.
+- La función/beneficio debe explicar el impacto organizacional esperado.
+- Dirigido a debe describir perfiles, áreas o roles pertinentes, sin inventar nombres de puestos demasiado específicos cuando no se conocen.
+- La metodología y entregables van en notes; no incluyas condiciones comerciales estándar de DEX.
+- Si falta modalidad, duración o participantes, conserva "por definir"/null en lugar de inventarlos.`;
+}
+
+function dexiUserPrompt(query, parsed, matchInfo) {
+  let reference = 'No existe una referencia DEX suficientemente cercana. Desarrolla la propuesta desde cero.';
+  if (matchInfo.match) {
+    const use = matchInfo.type === 'direct'
+      ? 'Referencia DEX directa: úsala como base principal y adáptala.'
+      : 'Referencia DEX parcial: úsala solo como orientación; no copies elementos que no correspondan.';
+    reference = `${use}\nTítulo: ${matchInfo.match.title}\nTemario de referencia:\n${matchInfo.match.temario}`;
+  }
+  return `SOLICITUD DEL CLIENTE:\n${query}\n\nDATOS DETECTADOS:\n- Duración: ${parsed.hours || 'por definir'} horas\n- Modalidad: ${parsed.modality || 'por definir'}\n- Participantes: ${parsed.participants || 'por definir'}\n\nTIPO DE COINCIDENCIA: ${matchInfo.type}\n${reference}\n\nPROFUNDIDAD REQUERIDA:\n${dexiDepthRules(parsed.hours)}\n\nGenera una propuesta completa que incluya título, presentación, objetivo general, 4 a 6 objetivos específicos, función/beneficio, dirigido a, temario modular, modalidad, duración, participantes y notas de metodología/entregables. No generes precio.`;
+}
+
+const DEXI_PROPOSAL_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    title: { type:'string' },
+    presentation: { type:'string' },
+    objectiveGeneral: { type:'string' },
+    objectives: { type:'array', items:{ type:'string' }, minItems:4, maxItems:6 },
+    benefit: { type:'string' },
+    audience: { type:'string' },
+    modality: { type:'string', enum:['presencial','online','hibrida','por definir'] },
+    durationHours: { type:['number','null'] },
+    participants: { type:['integer','null'] },
+    temario: {
+      type:'array',
+      minItems:3,
+      items:{
+        type:'object',
+        additionalProperties:false,
+        properties:{
+          title:{ type:'string' },
+          items:{ type:'array', items:{ type:'string' }, minItems:2 }
+        },
+        required:['title','items']
+      }
+    },
+    considerations: { type:'array', items:{ type:'string' } },
+    notes: { type:'string' }
+  },
+  required:['title','presentation','objectiveGeneral','objectives','benefit','audience','modality','durationHours','participants','temario','considerations','notes']
+};
+
+function responseOutputText(data) {
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
+  const chunks = [];
+  for (const item of (data?.output || [])) {
+    for (const c of (item?.content || [])) {
+      if ((c?.type === 'output_text' || c?.type === 'text') && typeof c.text === 'string') chunks.push(c.text);
+    }
+  }
+  return chunks.join('').trim();
+}
+
+async function openAiStructuredProposal(query, parsed, matchInfo) {
+  if (!HAS_OPENAI) throw new Error('OPENAI_NOT_CONFIGURED');
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method:'POST',
+    headers:{
+      Authorization:`Bearer ${OPENAI_API_KEY}`,
+      'Content-Type':'application/json'
+    },
+    body:JSON.stringify({
+      model: OPENAI_MODEL,
+      input:[
+        { role:'system', content:dexiSystemPrompt() },
+        { role:'user', content:dexiUserPrompt(query, parsed, matchInfo) }
+      ],
+      text:{
+        format:{
+          type:'json_schema',
+          name:'dexi_proposal',
+          strict:true,
+          schema:DEXI_PROPOSAL_SCHEMA
+        }
+      }
+    })
+  });
+  const raw = await response.text();
+  let data = null;
+  try { data = raw ? JSON.parse(raw) : {}; } catch { data = { raw }; }
+  if (!response.ok) {
+    const msg = data?.error?.message || `OpenAI ${response.status}`;
+    const err = new Error(msg); err.status = response.status; throw err;
+  }
+  const text = responseOutputText(data);
+  if (!text) throw new Error('OpenAI no devolvió contenido utilizable.');
+  let proposal;
+  try { proposal = JSON.parse(text); } catch { throw new Error('La respuesta de OpenAI no pudo convertirse en la estructura de propuesta.'); }
+  return { proposal, model:data?.model || OPENAI_MODEL, usage:data?.usage || null, responseId:data?.id || null };
+}
+
+app.post('/api/dexi/generate', async (req,res) => {
+  const query = String(req.body.query || '').trim();
+  if (!query) return res.status(400).json({ error:'Describe primero lo que solicitó el cliente.' });
+  if (!HAS_OPENAI) return res.status(503).json({ error:'DEXI todavía no tiene conectada la API de OpenAI.' });
+  const parsed = parseRequest(query, req.body || {});
+  const matchInfo = dexiMatchInfo(query);
+  const price = getPriceSuggestion(query, matchInfo.match?.title, parsed);
+  try {
+    const ai = await openAiStructuredProposal(query, parsed, matchInfo);
+    res.json({ parsed, matchType:matchInfo.type, match:matchInfo.match, price, generation:ai.proposal, ai:{model:ai.model,usage:ai.usage,responseId:ai.responseId} });
+  } catch (e) {
+    console.error('DEXI OpenAI error:', e.message);
+    const status = e.status === 401 ? 401 : e.status === 429 ? 429 : 502;
+    const friendly = status === 401
+      ? 'La API key de OpenAI no fue aceptada. Revisa OPENAI_API_KEY en Render.'
+      : status === 429
+        ? 'OpenAI rechazó temporalmente la solicitud por saldo, límite o capacidad. Revisa Billing/Limits y vuelve a intentar.'
+        : 'No fue posible generar la propuesta con OpenAI en este momento.';
+    res.status(status).json({ error:friendly, detail:process.env.NODE_ENV === 'development' ? e.message : undefined });
+  }
 });
 
 app.get('/api/storage/status', (_req,res) => {
@@ -629,4 +789,4 @@ app.post('/api/export/docx', async (req,res) => {
 
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 2.4 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 2.6 en puerto ${PORT}`));
