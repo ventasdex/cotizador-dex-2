@@ -193,13 +193,13 @@ async function runDexi(){
         <div class="price-evidence-grid">
           <div class="price-evidence-card">
             <div class="evidence-title">Matriz DEX</div>
-            ${p.matrixMedian?`<div class="evidence-median">Mediana comparable <b>${money(p.matrixMedian)}</b></div>`:'<div class="evidence-empty">Sin referencias de matriz suficientemente comparables.</div>'}
-            ${Array.isArray(p.matrixComparables)&&p.matrixComparables.length?`<ul>${p.matrixComparables.slice(0,3).map(r=>`<li>${escapeHtml(r.course)} <span>${r.hours||'—'} h · ${money(r.amount)}</span></li>`).join('')}</ul>`:''}
+            ${p.matrixWeighted?`<div class="evidence-median">Referencia ponderada <b>${money(p.matrixWeighted)}</b>${p.matrixMedian?` · mediana simple ${money(p.matrixMedian)}`:''}</div>`:(p.matrixMedian?`<div class="evidence-median">Mediana comparable <b>${money(p.matrixMedian)}</b></div>`:'<div class="evidence-empty">Sin referencias de matriz suficientemente comparables.</div>')}
+            ${Array.isArray(p.matrixComparables)&&p.matrixComparables.length?`<ul>${p.matrixComparables.slice(0,4).map(r=>`<li><span class="relevance-badge relevance-${escapeHtml(r.relevance||'contextual')}">${escapeHtml(r.relevanceLabel||'Contextual')}</span> ${escapeHtml(r.course)} <span>${r.hours||'—'} h · ${money(r.amount)} · peso ${Math.round((Number(r.weight)||0)*100)}%</span></li>`).join('')}</ul>`:''}
           </div>
           <div class="price-evidence-card">
             <div class="evidence-title">Operaciones históricas DEX</div>
-            ${p.historicalMedian?`<div class="evidence-median">Mediana real <b>${money(p.historicalMedian)}</b> · ${p.historicalCount||p.historicalComparables?.length||0} referencia(s)</div>`:'<div class="evidence-empty">Sin operaciones históricas suficientemente comparables.</div>'}
-            ${Array.isArray(p.historicalComparables)&&p.historicalComparables.length?`<ul>${p.historicalComparables.slice(0,3).map(r=>`<li>${escapeHtml(r.training)}${r.client?` <em>· ${escapeHtml(r.client)}</em>`:''} <span>${r.hours||'—'} h · ${money(r.adjustedAmount||r.amount)}</span></li>`).join('')}</ul>`:''}
+            ${p.historicalWeighted?`<div class="evidence-median">Referencia ponderada <b>${money(p.historicalWeighted)}</b>${p.historicalMedian?` · mediana simple ${money(p.historicalMedian)}`:''} · ${p.historicalCount||p.historicalComparables?.length||0} referencia(s)</div>`:(p.historicalMedian?`<div class="evidence-median">Mediana real <b>${money(p.historicalMedian)}</b> · ${p.historicalCount||p.historicalComparables?.length||0} referencia(s)</div>`:'<div class="evidence-empty">Sin operaciones históricas suficientemente comparables.</div>')}
+            ${Array.isArray(p.historicalComparables)&&p.historicalComparables.length?`<ul>${p.historicalComparables.slice(0,4).map(r=>`<li><span class="relevance-badge relevance-${escapeHtml(r.relevance||'contextual')}">${escapeHtml(r.relevanceLabel||'Contextual')}</span> ${escapeHtml(r.training)}${r.client?` <em>· ${escapeHtml(r.client)}</em>`:''} <span>${r.hours||'—'} h · ${money(r.amount)} · peso ${Math.round((Number(r.weight)||0)*100)}%</span></li>`).join('')}</ul>`:''}
           </div>
         </div>
       `:'<p>Aún no hay suficientes referencias internas para sugerir un precio automático.</p>'}</div>
@@ -253,35 +253,65 @@ async function openCatalog(){
   $('modalSearchGo').onclick=load; $('modalSearch').addEventListener('keydown',e=>{if(e.key==='Enter')load();}); await load();
 }
 async function openLibrary(){showModal(`<h2>Biblioteca DEX</h2><p class="modal-sub">Temarios extraídos del compendio DEX.</p><div class="inline"><input id="modalSearch" placeholder="Buscar temario..."><button class="mini-btn" id="modalSearchGo">Buscar</button></div><div id="modalList" class="list" style="margin-top:14px"></div>`);const load=async()=>{const rows=await api('/api/library?q='+encodeURIComponent($('modalSearch').value));$('modalList').innerHTML=rows.slice(0,25).map((r,i)=>`<div class="list-item" data-row="${i}"><b>${escapeHtml(r.title)}</b><small>${r.modules?.length||0} módulos · ${r.temario.length.toLocaleString()} caracteres</small></div>`).join('');$('modalList').querySelectorAll('[data-row]').forEach(el=>el.onclick=()=>{const r=rows[+el.dataset.row];$('title').value=r.title;$('temario').value=r.temario;Object.entries(courseTextBasics(r.title)).forEach(([k,v])=>$(k).value=v);hideModal();toast('Temario aplicado');});};$('modalSearchGo').onclick=load;$('modalSearch').addEventListener('keydown',e=>{if(e.key==='Enter')load();});await load();}
-function localQuoteHistory(){ try{return JSON.parse(localStorage.getItem('dex_quote_history')||'[]');}catch{return [];} }
-function saveLocalQuote(p){
-  const rows=localQuoteHistory(); const now=new Date();
-  const folio=`LOCAL-${now.getFullYear()}-${String(Date.now()).slice(-6)}`;
+function emergencyQuoteHistory(){ try{return JSON.parse(localStorage.getItem('dex_quote_emergency')||'[]');}catch{return [];} }
+function saveEmergencyQuote(p, errorMessage=''){
+  const rows=emergencyQuoteHistory(); const now=new Date();
+  const folio=`PENDIENTE-${now.getFullYear()}-${String(Date.now()).slice(-6)}`;
   const subtotal=(p.concepts||[]).reduce((s,c)=>s+(Number(c.price)||0)*(Number(c.qty)||1),0); const total=subtotal*(1-(Number(p.discount)||0)/100)*(1+(Number(p.iva)||0)/100);
-  const row={id:'local-'+Date.now(),folio,created_at:now.toISOString(),cliente:p.client,titulo:p.title,estado:'Borrador',monto_cotizado:total,solicitud_cliente:p.clientRequest,plantilla:p.template,data:{...p,folio,status:'Borrador'}};
-  rows.unshift(row); localStorage.setItem('dex_quote_history',JSON.stringify(rows.slice(0,200))); return row;
+  const row={id:'pending-'+Date.now(),folio,created_at:now.toISOString(),cliente:p.client,titulo:p.title,estado:'Pendiente de sincronizar',monto_cotizado:total,solicitud_cliente:p.clientRequest,plantilla:p.template,data:{...p,folio,status:'Pendiente de sincronizar'},syncError:errorMessage};
+  rows.unshift(row); localStorage.setItem('dex_quote_emergency',JSON.stringify(rows.slice(0,50))); return row;
 }
 async function saveQuoteToHistory(){
   const p=quoteData();
   if(!p.title && !p.clientRequest) return toast('Agrega la solicitud del cliente o el título de la propuesta.');
   try{
-    const row=await api('/api/quotes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
-    currentQuoteRecord=row; localStorage.removeItem('dex_quote_draft'); toast(`Cotización guardada: ${row.folio||'DEX'}`); return row;
+    const existingId = Number(currentQuoteRecord?.id);
+    const isSharedExisting = Number.isFinite(existingId) && existingId > 0 && !String(currentQuoteRecord?.id).startsWith('pending-');
+    const row=await api(isSharedExisting?`/api/quotes/${existingId}`:'/api/quotes',{method:isSharedExisting?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    currentQuoteRecord=row; localStorage.removeItem('dex_quote_draft'); toast(`✓ Cotización guardada en historial compartido: ${row.folio||'DEX'}`); return row;
   }catch(e){
-    const row=saveLocalQuote(p); currentQuoteRecord=row; toast(`Guardada temporalmente en este navegador: ${row.folio}`); return row;
+    const row=saveEmergencyQuote(p,e.message||'Sin conexión con Supabase');
+    currentQuoteRecord=null;
+    toast(`⚠ NO se guardó en el historial compartido. Se conservó una copia de emergencia: ${row.folio}`);
+    return null;
   }
 }
 async function loadSharedQuotes(q=''){
-  try{const rows=await api('/api/quotes?q='+encodeURIComponent(q));return {rows,persistent:true};}catch{return {rows:localQuoteHistory().filter(r=>!q||`${r.folio} ${r.cliente} ${r.titulo}`.toLowerCase().includes(q.toLowerCase())),persistent:false};}
+  try{
+    const rows=await api('/api/quotes?q='+encodeURIComponent(q));
+    return {rows,persistent:true,error:null,pending:emergencyQuoteHistory()};
+  }catch(e){
+    return {rows:[],persistent:false,error:e.message||'Sin conexión con Supabase',pending:emergencyQuoteHistory()};
+  }
 }
 function renderGeneratedHistory(rows,persistent){
   if(!rows.length) return '<div class="empty-state"><b>Aún no hay cotizaciones guardadas</b><span>Cuando guardes una propuesta aparecerá aquí.</span></div>';
-  return rows.map((r,i)=>`<div class="quote-history-item"><div><div class="folio">${escapeHtml(r.folio||'Sin folio')} ${persistent?'<span class="history-badge">Compartido</span>':'<span class="history-badge local">Este navegador</span>'}</div><div class="meta">${new Date(r.created_at||Date.now()).toLocaleDateString('es-MX')} · ${escapeHtml(r.estado||'Borrador')}</div></div><div><div class="title">${escapeHtml(r.titulo||'Propuesta sin título')}</div><div class="meta">${escapeHtml(r.cliente||'Sin cliente')}</div></div><div class="amount">${money(r.monto_cotizado||0)}</div><div class="quote-history-actions"><button data-openq="${i}">Abrir</button><button data-dupq="${i}">Duplicar</button></div></div>`).join('');
+  return rows.map((r,i)=>`<div class="quote-history-item"><div><div class="folio">${escapeHtml(r.folio||'Sin folio')} ${persistent?'<span class="history-badge">Compartido</span>':'<span class="history-badge local">Pendiente</span>'}</div><div class="meta">${new Date(r.created_at||Date.now()).toLocaleDateString('es-MX')} · ${escapeHtml(r.estado||'Borrador')}</div></div><div><div class="title">${escapeHtml(r.titulo||'Propuesta sin título')}</div><div class="meta">${escapeHtml(r.cliente||'Sin cliente')}</div></div><div class="amount">${money(r.monto_cotizado||0)}</div><div class="quote-history-actions"><button data-openq="${i}">Abrir</button><button data-dupq="${i}">Duplicar</button></div></div>`).join('');
+}
+function renderPendingHistory(rows){
+  if(!rows.length) return '';
+  return `<div class="storage-note storage-warn"><b>${rows.length} copia(s) de emergencia sin sincronizar.</b> Estas cotizaciones NO son visibles para el resto del equipo hasta que se guarden correctamente en Supabase.</div>${renderGeneratedHistory(rows,false)}`;
 }
 async function openHistory(){
   showModal(`<h2>Histórico de cotizaciones</h2><p class="modal-sub">Cotizaciones generadas por el equipo y referencias comerciales anteriores.</p><div class="history-tabs"><button id="tabGenerated" class="active">Cotizaciones generadas</button><button id="tabLegacy">Referencias 2025</button></div><div class="inline" style="margin-top:12px"><input id="modalSearch" placeholder="Buscar folio, cliente o curso..."><button class="mini-btn" id="modalSearchGo">Buscar</button></div><div id="historyStatus" class="history-status"></div><div id="modalList" class="list" style="margin-top:12px"></div>`);
   let mode='generated';
-  const loadGenerated=async()=>{mode='generated';$('tabGenerated').classList.add('active');$('tabLegacy').classList.remove('active');const result=await loadSharedQuotes($('modalSearch').value.trim());$('historyStatus').innerHTML=result.persistent?'<div class="storage-note storage-ok">✓ Historial compartido conectado: las vendedoras ven las mismas cotizaciones.</div>':'<div class="storage-note">El historial compartido aún no está conectado. Por ahora las cotizaciones nuevas se guardan temporalmente en este navegador.</div>';$('modalList').innerHTML=renderGeneratedHistory(result.rows,result.persistent);$('modalList').querySelectorAll('[data-openq]').forEach(el=>el.onclick=()=>{const r=result.rows[+el.dataset.openq];applyData(r.data||r);currentQuoteRecord=r;hideModal();toast(`Cotización ${r.folio||''} cargada`);});$('modalList').querySelectorAll('[data-dupq]').forEach(el=>el.onclick=()=>{const r=result.rows[+el.dataset.dupq];applyData(r.data||r);currentQuoteRecord=null;hideModal();toast('Cotización duplicada como nueva');});};
+  const loadGenerated=async()=>{
+    mode='generated'; $('tabGenerated').classList.add('active'); $('tabLegacy').classList.remove('active');
+    const result=await loadSharedQuotes($('modalSearch').value.trim());
+    if(result.persistent){
+      $('historyStatus').innerHTML='<div class="storage-note storage-ok">✓ Historial compartido conectado a Supabase. Todo lo guardado aquí es permanente y visible para el equipo.</div>';
+      $('modalList').innerHTML=renderGeneratedHistory(result.rows,true)+(result.pending?.length?renderPendingHistory(result.pending):'');
+      const combined=[...result.rows,...(result.pending||[])];
+      $('modalList').querySelectorAll('[data-openq]').forEach((el,index)=>el.onclick=()=>{const r=combined[index];applyData(r.data||r);currentQuoteRecord=String(r.id||'').startsWith('pending-')?null:r;hideModal();toast(`Cotización ${r.folio||''} cargada`);});
+      $('modalList').querySelectorAll('[data-dupq]').forEach((el,index)=>el.onclick=()=>{const r=combined[index];applyData(r.data||r);currentQuoteRecord=null;hideModal();toast('Cotización duplicada como nueva');});
+    }else{
+      $('historyStatus').innerHTML=`<div class="storage-note storage-error"><b>✕ Historial compartido sin conexión.</b> ${escapeHtml(result.error||'Revisa Supabase en Render.')}</div>`;
+      $('modalList').innerHTML=renderPendingHistory(result.pending||[])+(!result.pending?.length?'<div class="empty-state"><b>No hay una copia compartida disponible.</b><span>No consideres una cotización guardada hasta que aparezca con la etiqueta Compartido.</span></div>':'');
+      const pending=result.pending||[];
+      $('modalList').querySelectorAll('[data-openq]').forEach((el,index)=>el.onclick=()=>{const r=pending[index];applyData(r.data||r);currentQuoteRecord=null;hideModal();toast('Copia de emergencia cargada');});
+      $('modalList').querySelectorAll('[data-dupq]').forEach((el,index)=>el.onclick=()=>{const r=pending[index];applyData(r.data||r);currentQuoteRecord=null;hideModal();toast('Copia duplicada como nueva');});
+    }
+  };
   const loadLegacy=async()=>{mode='legacy';$('tabLegacy').classList.add('active');$('tabGenerated').classList.remove('active');$('historyStatus').textContent='Referencias históricas de ventas que DEXI utiliza para sugerir precios.';const rows=await api('/api/history?q='+encodeURIComponent($('modalSearch').value));$('modalList').innerHTML=rows.slice(0,40).map(r=>`<div class="list-item"><b>${escapeHtml(r.entrenamiento)}</b><small>${escapeHtml(r.cliente)} · ${r.horas||'—'} h · ${money(r.importe)} · ${r.fechaFacturacion||''}</small></div>`).join('');};
   $('tabGenerated').onclick=loadGenerated;$('tabLegacy').onclick=loadLegacy;$('modalSearchGo').onclick=()=>mode==='generated'?loadGenerated():loadLegacy();$('modalSearch').addEventListener('keydown',e=>{if(e.key==='Enter') $('modalSearchGo').click();});await loadGenerated();
 }
