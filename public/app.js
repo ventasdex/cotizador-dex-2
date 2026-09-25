@@ -161,8 +161,7 @@ function applyGeneratedProposal(g){
   if(g.modality && ['presencial','online','hibrida'].includes(String(g.modality).toLowerCase())) $('modality').value=String(g.modality).toLowerCase();
   if(g.durationHours) $('durationTotal').value=`${g.durationHours} horas`;
   if(g.participants){ $('participants').value=`${g.participants} participantes`; if($('participantsMax')) $('participantsMax').value=g.participants; syncStandardConsiderations(); }
-  if(currentDexi?.price?.suggested && !concepts.length) applyDexiPrice();
-  toast('DEXI aplicó la propuesta profesional');
+  toast('DEXI aplicó únicamente el contenido de la propuesta');
 }
 
 async function runDexi(){
