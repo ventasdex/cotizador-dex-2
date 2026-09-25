@@ -123,10 +123,10 @@ $('findTemplate').onclick=()=>searchTemplate($('title').value);
 
 function openDexi(initialText=''){
   const request = initialText || $('clientRequest')?.value.trim() || '';
-  showModal(`<div class="dexi-head"><h2>✦ DEXI</h2><p>Convierte lo que pidió el cliente en una propuesta profesional usando la biblioteca DEX, históricos y OpenAI.</p></div>
+  showModal(`<div class="dexi-head"><h2>✦ DEXI</h2><p>Convierte lo que pidió el cliente en una propuesta profesional usando la biblioteca DEX, históricos y Gemini.</p></div>
   <p><b>Cuéntame qué solicitó el cliente.</b> Puedes escribirlo como te lo dijeron por teléfono, WhatsApp o correo.</p>
   <div class="dexi-input"><textarea id="dexiQuery" placeholder="Ej. El cliente necesita un curso de solución de problemas...">${escapeHtml(request)}</textarea><button class="btn btn-dexi" id="dexiGo">✦ Construir propuesta</button></div>
-  <div id="dexiResult"><div class="dexi-workflow"><div class="dexi-step"><span class="dexi-step-num">1</span><div><b>Entender solicitud</b><small>Duración, modalidad, participantes y necesidad.</small></div></div><div class="dexi-step"><span class="dexi-step-num">2</span><div><b>Consultar DEX</b><small>Temarios, matriz de precios e históricos.</small></div></div><div class="dexi-step"><span class="dexi-step-num">3</span><div><b>Generar propuesta</b><small>OpenAI construye o adapta el contenido con las reglas técnicas de DEX.</small></div></div></div></div>`);
+  <div id="dexiResult"><div class="dexi-workflow"><div class="dexi-step"><span class="dexi-step-num">1</span><div><b>Entender solicitud</b><small>Duración, modalidad, participantes y necesidad.</small></div></div><div class="dexi-step"><span class="dexi-step-num">2</span><div><b>Consultar DEX</b><small>Temarios, matriz de precios e históricos.</small></div></div><div class="dexi-step"><span class="dexi-step-num">3</span><div><b>Generar propuesta</b><small>Gemini construye o adapta el contenido con las reglas técnicas de DEX.</small></div></div></div></div>`);
   $('dexiGo').onclick=runDexi;
 }
 $('openDexi').onclick=()=>openDexi();
@@ -180,14 +180,14 @@ async function runDexi(){
     target.innerHTML=`
       <div class="result-card"><h3>Solicitud entendida</h3><span class="pill">${escapeHtml(detected)}</span></div>
       <div class="result-card"><h3>Referencia DEX</h3>${matchHtml}</div>
-      <div class="result-card"><h3>Propuesta generada</h3><b>${escapeHtml(g.title||'Propuesta DEX')}</b><p>${escapeHtml(g.presentation||'')}</p>${previewModules?`<ul>${previewModules}</ul>`:''}<p><small>Generada con ${escapeHtml(d.ai?.model||'OpenAI')}.</small></p></div>
+      <div class="result-card"><h3>Propuesta generada</h3><b>${escapeHtml(g.title||'Propuesta DEX')}</b><p>${escapeHtml(g.presentation||'')}</p>${previewModules?`<ul>${previewModules}</ul>`:''}<p><small>Generada con ${escapeHtml(d.ai?.provider||'IA')} · ${escapeHtml(d.ai?.model||'modelo disponible')}.</small></p></div>
       <div class="result-card"><h3>Precio DEXI</h3>${p.suggested?`<div class="price-big">${money(p.suggested)} + IVA</div><span class="pill">Confianza ${p.confidence}</span><p>Rango sugerido: <b>${money(p.min)} – ${money(p.max)}</b></p>${p.matrix?`<p>Matriz DEX: ${escapeHtml(p.matrix.course)} · ${money(p.matrix.adjustedPrice)}</p>`:''}${p.historicalMedian?`<p>Mediana histórica comparable: ${money(p.historicalMedian)} · ${p.comparables.length} referencia(s)</p>`:''}`:'<p>Aún no hay suficientes referencias internas para sugerir un precio automático.</p>'}</div>
       <div class="modal-actions"><button class="btn btn-dexi" id="applyAiProposal">✦ Aplicar propuesta completa</button>${p.suggested?'<button class="btn btn-light" id="applyPrice">Aplicar precio sugerido</button>':''}<button class="btn btn-light" id="closeDexiReview">Revisar después</button></div>`;
     $('applyAiProposal').onclick=()=>{applyGeneratedProposal(g);hideModal();};
     if($('applyPrice')) $('applyPrice').onclick=()=>applyDexiPrice();
     $('closeDexiReview').onclick=hideModal;
   }catch(e){
-    target.innerHTML=`<div class="result-card"><h3>No pude generar la propuesta</h3><p>${escapeHtml(e.message)}</p><p>Revisa la conexión de OpenAI y vuelve a intentarlo.</p></div><div class="modal-actions"><button class="btn btn-dexi" id="retryDexi">Reintentar</button></div>`;
+    target.innerHTML=`<div class="result-card"><h3>No pude generar la propuesta</h3><p>${escapeHtml(e.message)}</p><p>Revisa la conexión de Gemini y vuelve a intentarlo.</p></div><div class="modal-actions"><button class="btn btn-dexi" id="retryDexi">Reintentar</button></div>`;
     if($('retryDexi')) $('retryDexi').onclick=runDexi;
   }
 }
