@@ -160,78 +160,182 @@ function parseRequest(query = '', extra = {}) {
   };
 }
 
-function getPriceSuggestion(query, courseTitle, parsed) {
-  const target = courseTitle || query;
-  const priceMatches = topMatches(target, PRECIOS, 'curso', 12);
-  const bestMatrix = priceMatches.find(x => x.item.tipo === 'empresa') || priceMatches[0] || null;
-  const modality = parsed.modality || 'presencial';
-  let matrixPrice = null;
-  let matrixHours = null;
-  let matrixTitle = null;
-  let matrixScore = 0;
-  if (bestMatrix) {
-    matrixTitle = bestMatrix.item.curso;
-    matrixScore = bestMatrix.score;
-    matrixHours = bestMatrix.item.horas || null;
-    matrixPrice = Number(bestMatrix.item[modality]);
-    if (!Number.isFinite(matrixPrice)) matrixPrice = null;
-    if (matrixPrice && parsed.hours && matrixHours && parsed.hours !== matrixHours) {
-      matrixPrice = matrixPrice / matrixHours * parsed.hours;
-    }
-  }
-
-  let historyMatches = topMatches(target, HISTORICOS, 'entrenamiento', 30)
-    .filter(x => x.score >= 0.2)
-    .filter(x => parsed.openCourse ? /ABIERTO/i.test(x.item.entrenamiento) : !/ABIERTO/i.test(x.item.entrenamiento));
-
-  if (parsed.hours) {
-    const exact = historyMatches.filter(x => Number(x.item.horas) === Number(parsed.hours));
-    if (exact.length) historyMatches = exact;
-  }
-  historyMatches = historyMatches.slice(0, 8);
-  const histValues = historyMatches.map(x => {
-    const h = Number(x.item.horas);
-    const amount = Number(x.item.importe);
-    if (parsed.hours && h && h !== parsed.hours) return amount / h * parsed.hours;
-    return amount;
-  }).filter(Number.isFinite);
-  const histMedian = median(histValues);
-
-  let suggested = null;
-  if (matrixPrice && histMedian) suggested = matrixPrice * 0.55 + histMedian * 0.45;
-  else suggested = matrixPrice || histMedian;
-  suggested = round500(suggested);
-  const min = suggested ? round500(suggested * 0.90) : null;
-  const max = suggested ? round500(suggested * 1.10) : null;
-
-  let confidence = 'Baja';
-  if (suggested && matrixScore >= 0.55 && historyMatches.length >= 2) confidence = 'Alta';
-  else if (suggested && (matrixScore >= 0.35 || historyMatches.length >= 1)) confidence = 'Media';
-
-  return {
-    suggested,
-    min,
-    max,
-    confidence,
-    modality,
-    matrix: bestMatrix ? {
-      course: matrixTitle,
-      hours: matrixHours,
-      basePrice: Number(bestMatrix.item[modality]) || null,
-      adjustedPrice: matrixPrice ? round500(matrixPrice) : null,
-      score: Number(matrixScore.toFixed(3))
-    } : null,
-    historicalMedian: histMedian ? round500(histMedian) : null,
-    comparables: historyMatches.map(x => ({
-      training: x.item.entrenamiento,
-      client: x.item.cliente,
-      hours: x.item.horas,
-      amount: x.item.importe,
-      score: Number(x.score.toFixed(3))
-    }))
-  };
+function percentile(nums, p) {
+  const v = nums.filter(n => Number.isFinite(n)).sort((a,b) => a-b);
+  if (!v.length) return null;
+  if (v.length === 1) return v[0];
+  const idx = (v.length - 1) * p;
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  if (lo === hi) return v[lo];
+  return v[lo] + (v[hi] - v[lo]) * (idx - lo);
 }
 
+const PRICE_FAMILIES = {
+  core_tools: ['CORE TOOLS','APQP','PPAP','AMEF','FMEA','MSA','SPC','PLAN DE CONTROL','CONTROL PLAN'],
+  calidad_procesos: ['SCRAP','DESPERDICIO','MERMA','DEFECTO','SOLUCION DE PROBLEMAS','8D','A3','5 PORQUES','ISHIKAWA','CAUSA RAIZ','RCA','MEJORA CONTINUA','LEAN','SIX SIGMA','DMAIC','CONTROL ESTADISTICO','CAPACIDAD DE PROCESO','PROCESO DE MANUFACTURA','CALIDAD'],
+  sistemas_gestion: ['ISO 9001','ISO 14001','ISO 45001','ISO 19011','IATF','VDA','AUDITOR','AUDITORIA','SISTEMA DE GESTION'],
+  liderazgo_personas: ['LIDERAZGO','SUPERVISION','SUPERVISORES','COACHING','EQUIPOS','COMUNICACION','RETROALIMENTACION','DELEGACION','CONFLICTO'],
+  seguridad: ['SEGURIDAD','LOTO','NOM ','STPS','ERGONOM','GRUAS','DERRAMES','RIESGO','EPP'],
+  datos_software: ['EXCEL','POWER BI','MINITAB','DATOS','AUTOMATIZACION','MACROS','VBA'],
+  logistica_operaciones: ['LOGISTICA','INVENTARIO','ALMACEN','CADENA DE SUMINISTRO','COMERCIO EXTERIOR','ADUANA','KANBAN','PRODUCCION']
+};
+
+function priceFamily(text = '') {
+  const n = normalize(text);
+  let best = null, hits = 0;
+  for (const [family, words] of Object.entries(PRICE_FAMILIES)) {
+    const c = words.reduce((sum, w) => sum + (n.includes(normalize(w)) ? 1 : 0), 0);
+    if (c > hits) { hits = c; best = family; }
+  }
+  return hits ? best : null;
+}
+
+function adjustedAmount(amount, rowHours, requestedHours) {
+  const a = Number(amount), h = Number(rowHours), req = Number(requestedHours);
+  if (!Number.isFinite(a) || a <= 0) return null;
+  if (req && h && h > 0 && req !== h) return a / h * req;
+  return a;
+}
+
+function getPriceSuggestion(query, courseTitle, parsed) {
+  const target = [courseTitle, query].filter(Boolean).join(' ');
+  const modality = parsed.modality || 'presencial';
+  const requestedHours = Number(parsed.hours || 0) || null;
+  const family = priceFamily(target);
+  const desiredType = parsed.openCourse ? 'personal' : 'empresa';
+
+  const matrixRows = PRECIOS
+    .filter(r => !r.tipo || r.tipo === desiredType || (!parsed.openCourse && r.tipo === 'empresa'))
+    .map(item => {
+      const raw = Number(item[modality]);
+      if (!Number.isFinite(raw) || raw <= 0) return null;
+      const sim = similarity(target, item.curso || '');
+      const rowFamily = priceFamily(item.curso || '');
+      const sameFamily = Boolean(family && rowFamily === family);
+      const h = Number(item.horas || 0) || null;
+      const hourFit = requestedHours && h ? Math.max(0, 1 - Math.abs(h-requestedHours)/Math.max(requestedHours, h)) : 0.5;
+      const commercialScore = sim * 0.65 + (sameFamily ? 0.25 : 0) + hourFit * 0.10;
+      return { item, sim, sameFamily, hourFit, commercialScore, adjusted:adjustedAmount(raw,h,requestedHours) };
+    })
+    .filter(Boolean)
+    .sort((a,b) => b.commercialScore - a.commercialScore);
+
+  const directMatrix = matrixRows.filter(x => x.sim >= 0.55).slice(0,4);
+  const familyMatrix = matrixRows.filter(x => x.sameFamily && (x.sim >= 0.08 || x.hourFit >= 0.75)).slice(0,6);
+  const durationMatrix = matrixRows.filter(x => requestedHours && Number(x.item.horas) === requestedHours).slice(0,20);
+  const matrixEvidence = directMatrix.length ? directMatrix : (familyMatrix.length ? familyMatrix : durationMatrix);
+
+  const historyRows = HISTORICOS.map(item => {
+    const amount = Number(item.importe);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    const sim = similarity(target, item.entrenamiento || '');
+    const rowFamily = priceFamily(item.entrenamiento || '');
+    const sameFamily = Boolean(family && rowFamily === family);
+    const h = Number(item.horas || 0) || null;
+    const hourFit = requestedHours && h ? Math.max(0, 1 - Math.abs(h-requestedHours)/Math.max(requestedHours, h)) : 0.5;
+    const commercialScore = sim * 0.65 + (sameFamily ? 0.25 : 0) + hourFit * 0.10;
+    return { item, sim, sameFamily, hourFit, commercialScore, adjusted:adjustedAmount(amount,h,requestedHours) };
+  }).filter(Boolean)
+    .filter(x => parsed.openCourse ? /ABIERTO/i.test(x.item.entrenamiento || '') : !/ABIERTO/i.test(x.item.entrenamiento || ''))
+    .sort((a,b) => b.commercialScore - a.commercialScore);
+
+  const directHistory = historyRows.filter(x => x.sim >= 0.50).slice(0,6);
+  const familyHistory = historyRows.filter(x => x.sameFamily && (x.sim >= 0.08 || x.hourFit >= 0.70)).slice(0,8);
+  const durationHistory = historyRows.filter(x => requestedHours && Number(x.item.horas) === requestedHours).slice(0,10);
+  const historyEvidence = directHistory.length ? directHistory : (familyHistory.length ? familyHistory : durationHistory);
+
+  const matrixValues = matrixEvidence.map(x => x.adjusted).filter(Number.isFinite);
+  const historyValues = historyEvidence.map(x => x.adjusted).filter(Number.isFinite);
+  const durationBaselineValues = matrixRows
+    .filter(x => requestedHours && Number(x.item.horas) === requestedHours)
+    .map(x => x.adjusted).filter(Number.isFinite);
+
+  const matrixMedian = median(matrixValues);
+  const histMedian = median(historyValues);
+  const durationMedian = median(durationBaselineValues);
+
+  let recommended = null;
+  let basis = 'Sin evidencia suficiente';
+  if (directMatrix.length) {
+    if (histMedian) recommended = matrixMedian * 0.60 + histMedian * 0.30 + (durationMedian || matrixMedian) * 0.10;
+    else recommended = matrixMedian * 0.85 + (durationMedian || matrixMedian) * 0.15;
+    basis = 'Coincidencia directa con servicios DEX';
+  } else if (familyMatrix.length || familyHistory.length) {
+    const parts = [];
+    if (matrixMedian) parts.push([matrixMedian,0.45]);
+    if (histMedian) parts.push([histMedian,0.35]);
+    if (durationMedian) parts.push([durationMedian,0.20]);
+    const w = parts.reduce((s,x)=>s+x[1],0);
+    recommended = w ? parts.reduce((s,x)=>s+x[0]*x[1],0)/w : null;
+    basis = family ? 'Familia técnica comparable + duración/modalidad' : 'Servicios comparables por duración/modalidad';
+  } else if (durationMedian) {
+    recommended = durationMedian;
+    basis = 'Base DEX por duración y modalidad';
+  } else if (histMedian) {
+    recommended = histMedian;
+    basis = 'Históricos DEX comparables';
+  }
+
+  recommended = round500(recommended);
+  if (!recommended) {
+    return { suggested:null, recommended:null, competitive:null, premium:null, min:null, max:null, confidence:'Baja', modality, family, basis, matrix:null, historicalMedian:null, comparables:[] };
+  }
+
+  const evidenceValues = [...matrixValues, ...historyValues].filter(Number.isFinite);
+  const p25 = percentile(evidenceValues, 0.25);
+  const p75 = percentile(evidenceValues, 0.75);
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const competitiveRaw = p25 ? clamp(p25, recommended*0.86, recommended*0.96) : recommended*0.92;
+  const premiumRaw = p75 ? clamp(p75, recommended*1.05, recommended*1.18) : recommended*1.10;
+  let competitive = round500(competitiveRaw);
+  let premium = round500(premiumRaw);
+  if (competitive >= recommended) competitive = round500(recommended * 0.92);
+  if (premium <= recommended) premium = round500(recommended * 1.10);
+
+  let confidence = 'Baja';
+  const strongMatrix = directMatrix.length > 0;
+  const familyCount = familyMatrix.length + familyHistory.length;
+  if (strongMatrix && (directHistory.length >= 2 || familyHistory.length >= 2)) confidence = 'Alta';
+  else if (strongMatrix || familyCount >= 3 || (matrixValues.length >= 3 && historyValues.length >= 1)) confidence = 'Media';
+
+  const primaryMatrix = (directMatrix[0] || familyMatrix[0] || null);
+  const references = [...matrixEvidence.slice(0,3).map(x => ({
+    source:'Matriz', name:x.item.curso, hours:x.item.horas, amount:round500(x.adjusted), score:Number(x.commercialScore.toFixed(3))
+  })), ...historyEvidence.slice(0,3).map(x => ({
+    source:'Histórico', name:x.item.entrenamiento, client:x.item.cliente, hours:x.item.horas, amount:round500(x.adjusted), score:Number(x.commercialScore.toFixed(3))
+  }))];
+
+  return {
+    suggested: recommended,
+    recommended,
+    competitive,
+    premium,
+    min: competitive,
+    max: premium,
+    confidence,
+    modality,
+    family,
+    basis,
+    matrix: primaryMatrix ? {
+      course: primaryMatrix.item.curso,
+      hours: primaryMatrix.item.horas || null,
+      basePrice: Number(primaryMatrix.item[modality]) || null,
+      adjustedPrice: round500(primaryMatrix.adjusted),
+      score: Number(primaryMatrix.sim.toFixed(3)),
+      familyComparable: primaryMatrix.sameFamily
+    } : null,
+    historicalMedian: histMedian ? round500(histMedian) : null,
+    comparables: historyEvidence.slice(0,8).map(x => ({
+      training:x.item.entrenamiento,
+      client:x.item.cliente,
+      hours:x.item.horas,
+      amount:x.item.importe,
+      adjustedAmount:round500(x.adjusted),
+      score:Number(x.commercialScore.toFixed(3))
+    })),
+    references
+  };
+}
 function buildChatGptPrompt(query, match, parsed) {
   const base = match
     ? `TEMARIO DEX DE REFERENCIA (úsalo como base, adáptalo y conserva profundidad técnica):\n${match.temario}`
@@ -326,6 +430,8 @@ REGLAS INNEGOCIABLES:
 - Dirigido a debe describir perfiles, áreas o roles pertinentes, sin inventar nombres de puestos demasiado específicos cuando no se conocen.
 - En notes describe únicamente la metodología de impartición y, si es indispensable, alguna nota técnica específica. No inventes manuales, constancias, certificados, DC-3, grabaciones, licencias, materiales o entregables comerciales: DEX los incorpora por separado con sus reglas estándar.
 - No agregues contenido solo para cumplir cantidad. Cada subtema debe ser técnicamente útil, distinto y directamente relacionado con la solicitud.
+- Antes de responder, revisa internamente que el temario tenga una secuencia lógica, que no repita conceptos y que cubra el ciclo completo que exija el problema (por ejemplo: medición → análisis → causa raíz → acciones → control). Corrige la propuesta antes de devolver el JSON si detectas huecos o redundancias.
+- En temas de pérdidas, scrap o defectos, cuando sea pertinente incluye scrap vs. retrabajo, costo de no calidad e indicadores de scrap, sin inventar metas numéricas.
 - Si falta modalidad, duración o participantes, conserva "por definir"/null en lugar de inventarlos.`;
 }
 
@@ -562,9 +668,9 @@ app.post('/api/dexi/generate', async (req,res) => {
   if (!HAS_AI) return res.status(503).json({ error:'DEXI todavía no tiene conectada una API de inteligencia artificial.' });
   const parsed = parseRequest(query, req.body || {});
   const matchInfo = dexiMatchInfo(query);
-  const price = getPriceSuggestion(query, matchInfo.match?.title, parsed);
   try {
     const ai = await generateDexiProposal(query, parsed, matchInfo);
+    const price = getPriceSuggestion(query, ai?.proposal?.title || matchInfo.match?.title, parsed);
     res.json({
       parsed,
       matchType:matchInfo.type,
@@ -965,4 +1071,4 @@ app.post('/api/export/docx', async (req,res) => {
 
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 2.6 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 3.0 en puerto ${PORT}`));
