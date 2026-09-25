@@ -206,18 +206,47 @@ function durationFit(rowHours, requestedHours) {
   return 0.12;
 }
 
-function relevanceTier({ sameFamily, sim, rowHours, requestedHours }) {
+function parseParticipantCount(value) {
+  if (value == null || value === '') return null;
+  if (Number.isFinite(Number(value))) return Number(value);
+  const text = String(value).replace(/,/g, '.');
+  const nums = [...text.matchAll(/\d+(?:\.\d+)?/g)].map(m => Number(m[0])).filter(Number.isFinite);
+  if (!nums.length) return null;
+  // Cuando el registro trae un rango (ej. 15 a 20), usamos su punto medio.
+  if (nums.length >= 2) return (nums[0] + nums[1]) / 2;
+  return nums[0];
+}
+
+function participantFit(rowParticipants, requestedParticipants) {
+  const req = parseParticipantCount(requestedParticipants);
+  const row = parseParticipantCount(rowParticipants);
+  // Si la solicitud aún no define participantes, el tamaño del grupo no debe castigar el comparable.
+  if (!req) return { fit:0.75, known:Boolean(row), row, requested:req, label:row ? 'Grupo disponible' : 'Grupo no definido' };
+  // La ausencia del dato sigue permitiendo usar la referencia, pero con menor peso comercial.
+  if (!row) return { fit:0.60, known:false, row:null, requested:req, label:'Participantes sin dato' };
+  const diff = Math.abs(row - req);
+  let fit = 0.30;
+  if (diff <= 3) fit = 1;
+  else if (diff <= 7) fit = 0.75;
+  else if (diff <= 10) fit = 0.50;
+  return { fit, known:true, row, requested:req, label:`Grupo comparable: ${Math.round(row)} vs ${Math.round(req)}` };
+}
+
+function relevanceTier({ sameFamily, sim, rowHours, requestedHours, rowParticipants, requestedParticipants }) {
   const d = durationFit(rowHours, requestedHours);
-  if (!sameFamily) return { tier:'contextual', label:'Contextual', weight:0.05, durationFit:d };
+  const pf = participantFit(rowParticipants, requestedParticipants);
+  if (!sameFamily) return { tier:'contextual', label:'Contextual', weight:0.05 * pf.fit, durationFit:d, participantFit:pf.fit, participantKnown:pf.known, participantLabel:pf.label, rowParticipants:pf.row };
   const topical = Math.min(1, Math.max(0, Number(sim || 0)) / 0.35);
-  const weight = Math.max(0.08, Math.min(1, d * (0.70 + topical * 0.30)));
+  // El peso final combina cercanía técnica/duración con el tamaño del grupo.
+  const baseWeight = Math.max(0.08, Math.min(1, d * (0.70 + topical * 0.30)));
+  const weight = Math.max(0.05, Math.min(1, baseWeight * pf.fit));
   if (d >= 0.90 && (topical >= 0.18 || Number(rowHours) === Number(requestedHours))) {
-    return { tier:'strong', label:'Fuerte', weight, durationFit:d };
+    return { tier:'strong', label:'Fuerte', weight, durationFit:d, participantFit:pf.fit, participantKnown:pf.known, participantLabel:pf.label, rowParticipants:pf.row };
   }
   if (d >= 0.55 || topical >= 0.45) {
-    return { tier:'related', label:'Relacionada', weight, durationFit:d };
+    return { tier:'related', label:'Relacionada', weight, durationFit:d, participantFit:pf.fit, participantKnown:pf.known, participantLabel:pf.label, rowParticipants:pf.row };
   }
-  return { tier:'contextual', label:'Contextual', weight, durationFit:d };
+  return { tier:'contextual', label:'Contextual', weight, durationFit:d, participantFit:pf.fit, participantKnown:pf.known, participantLabel:pf.label, rowParticipants:pf.row };
 }
 
 function round500(n) {
@@ -358,6 +387,36 @@ function policyFor(family, modality, requestedHours) {
   };
 }
 
+function parseHoursValue(value) {
+  if (value == null || value === '') return null;
+  if (Number.isFinite(Number(value))) return Number(value);
+  const m = String(value).match(/(\d+(?:\.\d+)?)/);
+  return m ? Number(m[1]) : null;
+}
+
+async function sharedContractedHistory() {
+  if (!HAS_SUPABASE) return [];
+  try {
+    // Solo operaciones realmente contratadas alimentan el aprendizaje comercial.
+    const rows = await supabaseFetch('dex_cotizaciones?select=cliente,titulo,modalidad,duracion,participantes,monto_contratado,data,updated_at&monto_contratado=gt.0&order=updated_at.desc&limit=200', { method:'GET', headers:{Prefer:'return=minimal'} });
+    return (Array.isArray(rows) ? rows : []).map(row => {
+      const data = row.data && typeof row.data === 'object' ? row.data : {};
+      return {
+        cliente: row.cliente || data.client || '',
+        entrenamiento: row.titulo || data.title || '',
+        horas: parseHoursValue(row.duracion || data.durationTotal || data.durationHours),
+        importe: Number(row.monto_contratado || 0),
+        participantes: parseParticipantCount(row.participantes || data.participants || data.participantsQuoted),
+        modalidad: String(row.modalidad || data.modality || '').toLowerCase() || null,
+        sourceType:'supabase'
+      };
+    }).filter(r => r.entrenamiento && Number.isFinite(r.importe) && r.importe > 0);
+  } catch (e) {
+    console.warn('[DEXI pricing] No fue posible consultar operaciones contratadas de Supabase:', e.message);
+    return [];
+  }
+}
+
 function adjustedAmount(amount, rowHours, requestedHours) {
   const a = Number(amount), h = Number(rowHours), req = Number(requestedHours);
   if (!Number.isFinite(a) || a <= 0) return null;
@@ -365,10 +424,11 @@ function adjustedAmount(amount, rowHours, requestedHours) {
   return a;
 }
 
-function getPriceSuggestion(query, courseTitle, parsed) {
+async function getPriceSuggestion(query, courseTitle, parsed) {
   const target = [courseTitle, query].filter(Boolean).join(' ');
   const modality = parsed.modality || 'presencial';
   const requestedHours = Number(parsed.hours || 0) || null;
+  const requestedParticipants = parseParticipantCount(parsed.participants);
   const family = priceFamily(target);
   const desiredType = parsed.openCourse ? 'personal' : 'empresa';
   const policy = policyFor(family, modality, requestedHours);
@@ -382,8 +442,9 @@ function getPriceSuggestion(query, courseTitle, parsed) {
       const rowFamily = priceFamily(item.curso || '');
       const sameFamily = Boolean(family && rowFamily === family);
       const h = Number(item.horas || 0) || null;
-      const rel = relevanceTier({ sameFamily, sim, rowHours:h, requestedHours });
-      const commercialScore = sim * 0.50 + (sameFamily ? 0.30 : 0) + rel.durationFit * 0.20;
+      const rowParticipants = parseParticipantCount(item.participantes || item.participants || item.participantesMax || item.participantesMin);
+      const rel = relevanceTier({ sameFamily, sim, rowHours:h, requestedHours, rowParticipants, requestedParticipants });
+      const commercialScore = sim * 0.40 + (sameFamily ? 0.25 : 0) + rel.durationFit * 0.20 + rel.participantFit * 0.15;
       return {
         item, sim, rowFamily, sameFamily, commercialScore,
         adjusted:adjustedAmount(raw,h,requestedHours),
@@ -391,22 +452,33 @@ function getPriceSuggestion(query, courseTitle, parsed) {
         relevance:rel.tier,
         relevanceLabel:rel.label,
         relevanceWeight:rel.weight,
-        durationFit:rel.durationFit
+        durationFit:rel.durationFit,
+        participantFit:rel.participantFit,
+        participantKnown:rel.participantKnown,
+        participantLabel:rel.participantLabel,
+        rowParticipants:rel.rowParticipants
       };
     })
     .filter(Boolean)
     .filter(x => !family || x.sameFamily)
     .sort((a,b) => (b.relevanceWeight * 0.65 + b.commercialScore * 0.35) - (a.relevanceWeight * 0.65 + a.commercialScore * 0.35));
 
-  const historyRows = HISTORICOS.map(item => {
+  const sharedHistory = await sharedContractedHistory();
+  const allHistory = [
+    ...HISTORICOS.map(item => ({...item, sourceType:item.sourceType || 'legacy'})),
+    ...sharedHistory
+  ];
+
+  const historyRows = allHistory.map(item => {
     const amount = Number(item.importe);
     if (!Number.isFinite(amount) || amount <= 0) return null;
     const sim = similarity(target, item.entrenamiento || '');
     const rowFamily = priceFamily(item.entrenamiento || '');
     const sameFamily = Boolean(family && rowFamily === family);
     const h = Number(item.horas || 0) || null;
-    const rel = relevanceTier({ sameFamily, sim, rowHours:h, requestedHours });
-    const commercialScore = sim * 0.50 + (sameFamily ? 0.30 : 0) + rel.durationFit * 0.20;
+    const rowParticipants = parseParticipantCount(item.participantes || item.participants);
+    const rel = relevanceTier({ sameFamily, sim, rowHours:h, requestedHours, rowParticipants, requestedParticipants });
+    const commercialScore = sim * 0.40 + (sameFamily ? 0.25 : 0) + rel.durationFit * 0.20 + rel.participantFit * 0.15;
     return {
       item, sim, rowFamily, sameFamily, commercialScore,
       adjusted:amount,
@@ -414,10 +486,15 @@ function getPriceSuggestion(query, courseTitle, parsed) {
       relevance:rel.tier,
       relevanceLabel:rel.label,
       relevanceWeight:rel.weight,
-      durationFit:rel.durationFit
+      durationFit:rel.durationFit,
+      participantFit:rel.participantFit,
+      participantKnown:rel.participantKnown,
+      participantLabel:rel.participantLabel,
+      rowParticipants:rel.rowParticipants
     };
   }).filter(Boolean)
     .filter(x => parsed.openCourse ? /ABIERTO/i.test(x.item.entrenamiento || '') : !/ABIERTO/i.test(x.item.entrenamiento || ''))
+    .filter(x => !x.item.modalidad || !modality || String(x.item.modalidad).toLowerCase() === modality)
     .filter(x => !family || x.sameFamily)
     .sort((a,b) => (b.relevanceWeight * 0.65 + b.commercialScore * 0.35) - (a.relevanceWeight * 0.65 + a.commercialScore * 0.35));
 
@@ -457,9 +534,9 @@ function getPriceSuggestion(query, courseTitle, parsed) {
   if (totalW) dataRecommended = components.reduce((s,x) => s + x.value * x.weight, 0) / totalW;
 
   if (matrixStrong.length || historyStrong.length) {
-    basis = 'Comparables DEX ponderados por familia técnica, cercanía de duración y similitud temática';
+    basis = 'Comparables DEX ponderados por familia técnica, cercanía de duración, similitud temática y tamaño del grupo';
   } else if (matrixRelated.length || historyRelated.length) {
-    basis = 'Referencias relacionadas DEX ponderadas; sin comparable fuerte idéntico';
+    basis = 'Referencias relacionadas DEX ponderadas por duración, tema y tamaño del grupo; sin comparable comercial exacto';
   } else if (dataRecommended) {
     basis = 'Referencias contextuales DEX con peso reducido';
   }
@@ -504,6 +581,9 @@ function getPriceSuggestion(query, courseTitle, parsed) {
   if (strongCount >= 3 && historyStrong.length >= 1) confidence = 'Alta';
   else if (strongCount >= 1 || relatedCount >= 3) confidence = 'Media';
   if (policy && confidence === 'Baja' && (matrixEvidence.length + historyEvidence.length) >= 2) confidence = 'Media';
+  const participantEvidence = [...matrixEvidence, ...historyEvidence].filter(x => x.participantKnown && x.participantFit >= 0.75);
+  // Si el cliente sí indicó tamaño de grupo pero ninguna referencia lo documenta, no afirmamos confianza alta.
+  if (requestedParticipants && !participantEvidence.length && confidence === 'Alta') confidence = 'Media';
 
   const serializeMatrix = x => ({
     course:x.item.curso,
@@ -513,7 +593,11 @@ function getPriceSuggestion(query, courseTitle, parsed) {
     score:Number(x.commercialScore.toFixed(3)),
     relevance:x.relevance,
     relevanceLabel:x.relevanceLabel,
-    weight:Number(x.relevanceWeight.toFixed(3))
+    weight:Number(x.relevanceWeight.toFixed(3)),
+    participants:x.rowParticipants ? Math.round(x.rowParticipants) : null,
+    participantFit:Number(x.participantFit.toFixed(3)),
+    participantKnown:Boolean(x.participantKnown),
+    participantLabel:x.participantLabel
   });
   const serializeHistory = x => ({
     training:x.item.entrenamiento,
@@ -524,19 +608,24 @@ function getPriceSuggestion(query, courseTitle, parsed) {
     score:Number(x.commercialScore.toFixed(3)),
     relevance:x.relevance,
     relevanceLabel:x.relevanceLabel,
-    weight:Number(x.relevanceWeight.toFixed(3))
+    weight:Number(x.relevanceWeight.toFixed(3)),
+    participants:x.rowParticipants ? Math.round(x.rowParticipants) : null,
+    participantFit:Number(x.participantFit.toFixed(3)),
+    participantKnown:Boolean(x.participantKnown),
+    participantLabel:x.participantLabel,
+    sourceType:x.item.sourceType || 'legacy'
   });
 
   const primaryMatrix = matrixEvidence[0] || null;
   const references = [
     ...matrixEvidence.slice(0,4).map(x => ({
       source:'Matriz', name:x.item.curso, hours:x.item.horas, amount:round500(x.adjusted),
-      score:Number(x.commercialScore.toFixed(3)), relevance:x.relevance, weight:Number(x.relevanceWeight.toFixed(3))
+      score:Number(x.commercialScore.toFixed(3)), relevance:x.relevance, weight:Number(x.relevanceWeight.toFixed(3)), participants:x.rowParticipants ? Math.round(x.rowParticipants) : null, participantFit:Number(x.participantFit.toFixed(3))
     })),
     ...historyEvidence.slice(0,4).map(x => ({
       source:'Histórico', name:x.item.entrenamiento, client:x.item.cliente, hours:x.item.horas,
       amount:Number(x.item.importe), score:Number(x.commercialScore.toFixed(3)),
-      relevance:x.relevance, weight:Number(x.relevanceWeight.toFixed(3))
+      relevance:x.relevance, weight:Number(x.relevanceWeight.toFixed(3)), participants:x.rowParticipants ? Math.round(x.rowParticipants) : null, participantFit:Number(x.participantFit.toFixed(3))
     }))
   ];
 
@@ -570,6 +659,8 @@ function getPriceSuggestion(query, courseTitle, parsed) {
     historicalCount: historyEvidence.length,
     strongCount,
     relatedCount,
+    requestedParticipants,
+    participantComparableCount: participantEvidence.length,
     dataRecommended,
     policyApplied,
     matrixComparables: matrixEvidence.slice(0,8).map(serializeMatrix),
@@ -608,13 +699,13 @@ app.get('/api/history', (req,res) => {
   res.json(rows);
 });
 
-app.post('/api/dexi/suggest', (req,res) => {
+app.post('/api/dexi/suggest', async (req,res) => {
   const query = String(req.body.query || '').trim();
   if (!query) return res.status(400).json({ error:'Escribe lo que necesitas cotizar.' });
   const parsed = parseRequest(query, req.body || {});
   const best = topMatches(query, TEMARIOS, 'title', 1)[0] || null;
   const match = best && best.score >= 0.16 ? {...best.item, score:Number(best.score.toFixed(3))} : null;
-  const price = getPriceSuggestion(query, match?.title, parsed);
+  const price = await getPriceSuggestion(query, match?.title, parsed);
   const prompt = buildChatGptPrompt(query, match, parsed);
   res.json({ parsed, match, price, prompt });
 });
@@ -913,7 +1004,7 @@ app.post('/api/dexi/generate', async (req,res) => {
   const matchInfo = dexiMatchInfo(query);
   try {
     const ai = await generateDexiProposal(query, parsed, matchInfo);
-    const price = getPriceSuggestion(query, ai?.proposal?.title || matchInfo.match?.title, parsed);
+    const price = await getPriceSuggestion(query, ai?.proposal?.title || matchInfo.match?.title, parsed);
     res.json({
       parsed,
       matchType:matchInfo.type,
