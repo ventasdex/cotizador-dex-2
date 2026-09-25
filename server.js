@@ -41,7 +41,12 @@ const HAS_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVER_KEY);
 
 // Generación profesional DEXI. Gemini es el proveedor principal y OpenAI puede quedar como respaldo.
 // Las claves viven solo en Render y nunca se exponen al navegador.
-const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '');
+const GEMINI_API_KEY_PRIMARY = String(process.env.GEMINI_API_KEY || '');
+const GEMINI_API_KEY_BACKUP = String(process.env.GEMINI_API_KEY_BACKUP || '');
+const GEMINI_KEY_MODE = String(process.env.GEMINI_KEY_MODE || 'primary').trim().toLowerCase() === 'backup' ? 'backup' : 'primary';
+const GEMINI_API_KEY = GEMINI_KEY_MODE === 'backup'
+  ? (GEMINI_API_KEY_BACKUP || GEMINI_API_KEY_PRIMARY)
+  : GEMINI_API_KEY_PRIMARY;
 const GEMINI_MODEL = String(process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite');
 const GEMINI_FALLBACK_MODEL = String(process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.8-flash');
 const GEMINI_MAX_ATTEMPTS = Math.max(1, Math.min(3, Number(process.env.GEMINI_MAX_ATTEMPTS || 2)));
@@ -1327,4 +1332,4 @@ app.post('/api/export/docx', async (req,res) => {
 
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 3.4 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 3.5 en puerto ${PORT}`));
