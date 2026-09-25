@@ -187,7 +187,7 @@ async function runDexi(){
     if($('applyPrice')) $('applyPrice').onclick=()=>applyDexiPrice();
     $('closeDexiReview').onclick=hideModal;
   }catch(e){
-    target.innerHTML=`<div class="result-card"><h3>No pude generar la propuesta</h3><p>${escapeHtml(e.message)}</p><p>Revisa la conexión de Gemini y vuelve a intentarlo.</p></div><div class="modal-actions"><button class="btn btn-dexi" id="retryDexi">Reintentar</button></div>`;
+    target.innerHTML=`<div class="result-card"><h3>No pude generar la propuesta</h3><p>${escapeHtml(e.message)}</p><p>DEXI ya realizó reintentos automáticos y, cuando aplica, probó el modelo alterno. Si Google está temporalmente saturado, espera unos minutos y vuelve a intentarlo.</p></div><div class="modal-actions"><button class="btn btn-dexi" id="retryDexi">Reintentar</button></div>`;
     if($('retryDexi')) $('retryDexi').onclick=runDexi;
   }
 }
