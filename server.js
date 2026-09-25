@@ -28,11 +28,16 @@ const PRECIOS = loadJson('precios.json');
 const HISTORICOS = loadJson('historicos.json');
 const CONSULTORES = loadJson('consultores.json');
 
-// Historial persistente opcional (Supabase). Si no está configurado,
-// el frontend usa respaldo local en el navegador para no bloquear la operación.
+// Historial persistente compartido (Supabase).
+// Supabase está migrando de las claves legacy service_role (JWT) a claves secret sb_secret_... .
+// El backend admite ambas. Las nuevas claves secret deben enviarse SOLO en el header apikey;
+// enviarlas como Bearer provoca "Invalid JWT".
 const SUPABASE_URL = String(process.env.SUPABASE_URL || '').replace(/\/$/, '');
-const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
-const HAS_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+const SUPABASE_SERVER_KEY = String(
+  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+).trim();
+const SUPABASE_KEY_IS_LEGACY_JWT = SUPABASE_SERVER_KEY.startsWith('eyJ');
+const HAS_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVER_KEY);
 
 // Generación profesional DEXI. Gemini es el proveedor principal y OpenAI puede quedar como respaldo.
 // Las claves viven solo en Render y nunca se exponen al navegador.
@@ -51,23 +56,51 @@ const DEXI_PROVIDER = String(process.env.DEXI_AI_PROVIDER || (HAS_GEMINI ? 'gemi
 const HAS_AI = HAS_GEMINI || HAS_OPENAI;
 
 async function supabaseFetch(resource, options = {}) {
-  if (!HAS_SUPABASE) throw new Error('SUPABASE_NOT_CONFIGURED');
+  if (!HAS_SUPABASE) {
+    const err = new Error('SUPABASE_NOT_CONFIGURED');
+    err.status = 503;
+    throw err;
+  }
+
+  const headers = {
+    apikey: SUPABASE_SERVER_KEY,
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+    ...(options.headers || {})
+  };
+
+  // Compatibilidad con la clave legacy service_role (JWT).
+  // Para sb_secret_... NO se debe enviar Authorization: Bearer.
+  if (SUPABASE_KEY_IS_LEGACY_JWT && !headers.Authorization) {
+    headers.Authorization = `Bearer ${SUPABASE_SERVER_KEY}`;
+  }
+
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${resource}`, {
     ...options,
-    headers: {
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation',
-      ...(options.headers || {})
-    }
+    headers
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Supabase ${response.status}: ${text}`);
+    const err = new Error(`Supabase ${response.status}: ${text}`);
+    err.status = response.status;
+    err.supabaseBody = text;
+    throw err;
   }
   const text = await response.text();
   return text ? JSON.parse(text) : null;
+}
+
+function supabasePublicError(error) {
+  const status = Number(error?.status || 500);
+  const raw = String(error?.supabaseBody || error?.message || '');
+  if (!HAS_SUPABASE) return { status:503, code:'SUPABASE_NOT_CONFIGURED', message:'Falta configurar Supabase en Render.' };
+  if (status === 401 || /invalid jwt|api key|apikey|unauthorized/i.test(raw)) {
+    return { status:503, code:'SUPABASE_AUTH', message:'Supabase rechazó la clave del servidor. Revisa la clave secret configurada en Render.' };
+  }
+  if (status === 404 || /dex_cotizaciones|relation .* does not exist/i.test(raw)) {
+    return { status:503, code:'SUPABASE_SCHEMA', message:'No se encontró la tabla dex_cotizaciones. Ejecuta el esquema de Supabase del cotizador.' };
+  }
+  return { status:500, code:'SUPABASE_ERROR', message:'No fue posible conectar con el historial compartido.' };
 }
 
 function normalize(value = '') {
@@ -140,6 +173,46 @@ function median(nums) {
   if (!v.length) return null;
   const m = Math.floor(v.length/2);
   return v.length % 2 ? v[m] : (v[m-1] + v[m]) / 2;
+}
+
+function weightedMedian(entries = []) {
+  const rows = entries
+    .filter(x => Number.isFinite(Number(x.value)) && Number(x.weight) > 0)
+    .map(x => ({ value:Number(x.value), weight:Number(x.weight) }))
+    .sort((a,b) => a.value - b.value);
+  if (!rows.length) return null;
+  const total = rows.reduce((s,x) => s + x.weight, 0);
+  let acc = 0;
+  for (const row of rows) {
+    acc += row.weight;
+    if (acc >= total / 2) return row.value;
+  }
+  return rows[rows.length - 1].value;
+}
+
+function durationFit(rowHours, requestedHours) {
+  const h = Number(rowHours), req = Number(requestedHours);
+  if (!req || !h) return 0.55;
+  const diff = Math.abs(h - req);
+  if (diff === 0) return 1;
+  if (diff <= 2) return 0.90;
+  if (diff <= 4) return 0.55;
+  if (diff <= 8) return 0.30;
+  return 0.12;
+}
+
+function relevanceTier({ sameFamily, sim, rowHours, requestedHours }) {
+  const d = durationFit(rowHours, requestedHours);
+  if (!sameFamily) return { tier:'contextual', label:'Contextual', weight:0.05, durationFit:d };
+  const topical = Math.min(1, Math.max(0, Number(sim || 0)) / 0.35);
+  const weight = Math.max(0.08, Math.min(1, d * (0.70 + topical * 0.30)));
+  if (d >= 0.90 && (topical >= 0.18 || Number(rowHours) === Number(requestedHours))) {
+    return { tier:'strong', label:'Fuerte', weight, durationFit:d };
+  }
+  if (d >= 0.55 || topical >= 0.45) {
+    return { tier:'related', label:'Relacionada', weight, durationFit:d };
+  }
+  return { tier:'contextual', label:'Contextual', weight, durationFit:d };
 }
 
 function round500(n) {
@@ -278,18 +351,21 @@ function getPriceSuggestion(query, courseTitle, parsed) {
       const rowFamily = priceFamily(item.curso || '');
       const sameFamily = Boolean(family && rowFamily === family);
       const h = Number(item.horas || 0) || null;
-      const hourFit = requestedHours && h ? Math.max(0, 1 - Math.abs(h-requestedHours)/Math.max(requestedHours, h)) : 0.5;
-      const commercialScore = sim * 0.55 + (sameFamily ? 0.35 : 0) + hourFit * 0.10;
-      return { item, sim, rowFamily, sameFamily, hourFit, commercialScore, adjusted:adjustedAmount(raw,h,requestedHours) };
+      const rel = relevanceTier({ sameFamily, sim, rowHours:h, requestedHours });
+      const commercialScore = sim * 0.50 + (sameFamily ? 0.30 : 0) + rel.durationFit * 0.20;
+      return {
+        item, sim, rowFamily, sameFamily, commercialScore,
+        adjusted:adjustedAmount(raw,h,requestedHours),
+        actualAmount:raw,
+        relevance:rel.tier,
+        relevanceLabel:rel.label,
+        relevanceWeight:rel.weight,
+        durationFit:rel.durationFit
+      };
     })
     .filter(Boolean)
-    .sort((a,b) => b.commercialScore - a.commercialScore);
-
-  // Si conocemos la familia, nunca usamos como respaldo un curso de otra familia solo porque dura lo mismo.
-  const directMatrix = matrixRows.filter(x => x.sim >= 0.55 && (!family || x.sameFamily)).slice(0,4);
-  const familyMatrix = family ? matrixRows.filter(x => x.sameFamily && (x.sim >= 0.08 || x.hourFit >= 0.70)).slice(0,8) : [];
-  const durationMatrix = matrixRows.filter(x => requestedHours && Number(x.item.horas) === requestedHours && (!family || x.sameFamily)).slice(0,12);
-  const matrixEvidence = directMatrix.length ? directMatrix : (familyMatrix.length ? familyMatrix : durationMatrix);
+    .filter(x => !family || x.sameFamily)
+    .sort((a,b) => (b.relevanceWeight * 0.65 + b.commercialScore * 0.35) - (a.relevanceWeight * 0.65 + a.commercialScore * 0.35));
 
   const historyRows = HISTORICOS.map(item => {
     const amount = Number(item.importe);
@@ -298,48 +374,63 @@ function getPriceSuggestion(query, courseTitle, parsed) {
     const rowFamily = priceFamily(item.entrenamiento || '');
     const sameFamily = Boolean(family && rowFamily === family);
     const h = Number(item.horas || 0) || null;
-    const hourFit = requestedHours && h ? Math.max(0, 1 - Math.abs(h-requestedHours)/Math.max(requestedHours, h)) : 0.5;
-    const commercialScore = sim * 0.55 + (sameFamily ? 0.35 : 0) + hourFit * 0.10;
-    return { item, sim, rowFamily, sameFamily, hourFit, commercialScore, adjusted:adjustedAmount(amount,h,requestedHours) };
+    const rel = relevanceTier({ sameFamily, sim, rowHours:h, requestedHours });
+    const commercialScore = sim * 0.50 + (sameFamily ? 0.30 : 0) + rel.durationFit * 0.20;
+    return {
+      item, sim, rowFamily, sameFamily, commercialScore,
+      adjusted:amount,
+      actualAmount:amount,
+      relevance:rel.tier,
+      relevanceLabel:rel.label,
+      relevanceWeight:rel.weight,
+      durationFit:rel.durationFit
+    };
   }).filter(Boolean)
     .filter(x => parsed.openCourse ? /ABIERTO/i.test(x.item.entrenamiento || '') : !/ABIERTO/i.test(x.item.entrenamiento || ''))
-    .sort((a,b) => b.commercialScore - a.commercialScore);
+    .filter(x => !family || x.sameFamily)
+    .sort((a,b) => (b.relevanceWeight * 0.65 + b.commercialScore * 0.35) - (a.relevanceWeight * 0.65 + a.commercialScore * 0.35));
 
-  const directHistory = historyRows.filter(x => x.sim >= 0.50 && (!family || x.sameFamily)).slice(0,6);
-  const familyHistory = family ? historyRows.filter(x => x.sameFamily && (x.sim >= 0.08 || x.hourFit >= 0.65)).slice(0,8) : [];
-  const durationHistory = historyRows.filter(x => requestedHours && Number(x.item.horas) === requestedHours && (!family || x.sameFamily)).slice(0,10);
-  const historyEvidence = directHistory.length ? directHistory : (familyHistory.length ? familyHistory : durationHistory);
+  const usefulMatrix = matrixRows.filter(x => x.relevance !== 'contextual').slice(0,10);
+  const usefulHistory = historyRows.filter(x => x.relevance !== 'contextual').slice(0,10);
+  const contextualMatrix = matrixRows.filter(x => x.relevance === 'contextual').slice(0,4);
+  const contextualHistory = historyRows.filter(x => x.relevance === 'contextual').slice(0,4);
 
-  const matrixValues = matrixEvidence.map(x => x.adjusted).filter(Number.isFinite);
-  const historyValues = historyEvidence.map(x => x.adjusted).filter(Number.isFinite);
-  const durationBaselineValues = matrixRows
-    .filter(x => requestedHours && Number(x.item.horas) === requestedHours && (!family || x.sameFamily))
-    .map(x => x.adjusted).filter(Number.isFinite);
+  const matrixEvidence = usefulMatrix.length ? usefulMatrix : contextualMatrix;
+  const historyEvidence = usefulHistory.length ? usefulHistory : contextualHistory;
 
-  const matrixMedian = median(matrixValues);
-  const histMedian = median(historyValues);
-  const durationMedian = median(durationBaselineValues);
+  const matrixWeighted = weightedMedian(matrixEvidence.map(x => ({ value:x.adjusted, weight:x.relevanceWeight })));
+  const historyWeighted = weightedMedian(historyEvidence.map(x => ({ value:x.actualAmount, weight:x.relevanceWeight })));
+  const matrixMedianSimple = median(matrixEvidence.map(x => x.adjusted));
+  const historicalMedianSimple = median(historyEvidence.map(x => x.actualAmount));
+
+  const matrixStrong = matrixEvidence.filter(x => x.relevance === 'strong');
+  const historyStrong = historyEvidence.filter(x => x.relevance === 'strong');
+  const matrixRelated = matrixEvidence.filter(x => x.relevance === 'related');
+  const historyRelated = historyEvidence.filter(x => x.relevance === 'related');
 
   let dataRecommended = null;
   let basis = 'Sin evidencia suficiente';
-  if (directMatrix.length) {
-    if (histMedian) dataRecommended = matrixMedian * 0.60 + histMedian * 0.30 + (durationMedian || matrixMedian) * 0.10;
-    else dataRecommended = matrixMedian * 0.85 + (durationMedian || matrixMedian) * 0.15;
-    basis = 'Coincidencia directa con servicios DEX de la misma familia técnica';
-  } else if (familyMatrix.length || familyHistory.length) {
-    const parts = [];
-    if (matrixMedian) parts.push([matrixMedian,0.45]);
-    if (histMedian) parts.push([histMedian,0.35]);
-    if (durationMedian) parts.push([durationMedian,0.20]);
-    const w = parts.reduce((s,x)=>s+x[1],0);
-    dataRecommended = w ? parts.reduce((s,x)=>s+x[0]*x[1],0)/w : null;
-    basis = 'Comparables DEX de la misma familia técnica + duración/modalidad';
-  } else if (durationMedian) {
-    dataRecommended = durationMedian;
-    basis = 'Comparables DEX de la misma familia por duración y modalidad';
-  } else if (histMedian) {
-    dataRecommended = histMedian;
-    basis = 'Históricos DEX de la misma familia técnica';
+  const components = [];
+  if (matrixWeighted) components.push({ value:matrixWeighted, weight: matrixStrong.length ? 0.55 : 0.40 });
+  if (historyWeighted) components.push({ value:historyWeighted, weight: historyStrong.length ? 0.35 : 0.25 });
+
+  if (!components.length) {
+    const fallback = weightedMedian([
+      ...contextualMatrix.map(x => ({value:x.adjusted, weight:x.relevanceWeight * 0.20})),
+      ...contextualHistory.map(x => ({value:x.actualAmount, weight:x.relevanceWeight * 0.15}))
+    ]);
+    if (fallback) components.push({ value:fallback, weight:0.15 });
+  }
+
+  const totalW = components.reduce((s,x) => s + x.weight, 0);
+  if (totalW) dataRecommended = components.reduce((s,x) => s + x.value * x.weight, 0) / totalW;
+
+  if (matrixStrong.length || historyStrong.length) {
+    basis = 'Comparables DEX ponderados por familia técnica, cercanía de duración y similitud temática';
+  } else if (matrixRelated.length || historyRelated.length) {
+    basis = 'Referencias relacionadas DEX ponderadas; sin comparable fuerte idéntico';
+  } else if (dataRecommended) {
+    basis = 'Referencias contextuales DEX con peso reducido';
   }
 
   dataRecommended = round500(dataRecommended);
@@ -354,10 +445,15 @@ function getPriceSuggestion(query, courseTitle, parsed) {
   }
 
   if (!recommended) {
-    return { suggested:null, recommended:null, competitive:null, premium:null, min:null, max:null, floor:null, confidence:'Baja', modality, family, basis, matrix:null, matrixMedian:null, matrixCount:0, historicalMedian:null, historicalCount:0, matrixComparables:[], historicalComparables:[], comparables:[], references:[], policyApplied:false };
+    return {
+      suggested:null, recommended:null, competitive:null, premium:null, min:null, max:null, floor:null,
+      confidence:'Baja', modality, family, basis, matrix:null, matrixMedian:null, matrixCount:0,
+      historicalMedian:null, historicalCount:0, matrixWeighted:null, historicalWeighted:null,
+      matrixComparables:[], historicalComparables:[], comparables:[], references:[], policyApplied:false
+    };
   }
 
-  const evidenceValues = [...matrixValues, ...historyValues].filter(Number.isFinite);
+  const evidenceValues = [matrixWeighted, historyWeighted].filter(Number.isFinite);
   const p25 = percentile(evidenceValues, 0.25);
   const p75 = percentile(evidenceValues, 0.75);
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -372,20 +468,46 @@ function getPriceSuggestion(query, courseTitle, parsed) {
   if (premium <= recommended) premium = round500(recommended * 1.14);
 
   let confidence = 'Baja';
-  const strongMatrix = directMatrix.length > 0;
-  const familyCount = familyMatrix.length + familyHistory.length;
-  if (strongMatrix && (directHistory.length >= 2 || familyHistory.length >= 2)) confidence = 'Alta';
-  else if (strongMatrix || familyCount >= 3 || (matrixValues.length >= 3 && historyValues.length >= 1)) confidence = 'Media';
-  // Un piso comercial aporta control interno, pero no convierte por sí solo una referencia débil en confianza alta.
-  if (policy && confidence === 'Baja' && (matrixValues.length + historyValues.length) >= 2) confidence = 'Media';
+  const strongCount = matrixStrong.length + historyStrong.length;
+  const relatedCount = matrixRelated.length + historyRelated.length;
+  if (strongCount >= 3 && historyStrong.length >= 1) confidence = 'Alta';
+  else if (strongCount >= 1 || relatedCount >= 3) confidence = 'Media';
+  if (policy && confidence === 'Baja' && (matrixEvidence.length + historyEvidence.length) >= 2) confidence = 'Media';
 
-  const validMatrixRefs = matrixEvidence.filter(x => !family || x.sameFamily);
-  const primaryMatrix = validMatrixRefs[0] || null;
-  const references = [...validMatrixRefs.slice(0,3).map(x => ({
-    source:'Matriz', name:x.item.curso, hours:x.item.horas, amount:round500(x.adjusted), score:Number(x.commercialScore.toFixed(3))
-  })), ...historyEvidence.filter(x => !family || x.sameFamily).slice(0,3).map(x => ({
-    source:'Histórico', name:x.item.entrenamiento, client:x.item.cliente, hours:x.item.horas, amount:round500(x.adjusted), score:Number(x.commercialScore.toFixed(3))
-  }))];
+  const serializeMatrix = x => ({
+    course:x.item.curso,
+    hours:x.item.horas,
+    amount:round500(x.adjusted),
+    baseAmount:Number(x.actualAmount) || null,
+    score:Number(x.commercialScore.toFixed(3)),
+    relevance:x.relevance,
+    relevanceLabel:x.relevanceLabel,
+    weight:Number(x.relevanceWeight.toFixed(3))
+  });
+  const serializeHistory = x => ({
+    training:x.item.entrenamiento,
+    client:x.item.cliente,
+    hours:x.item.horas,
+    amount:x.item.importe,
+    adjustedAmount:x.item.importe,
+    score:Number(x.commercialScore.toFixed(3)),
+    relevance:x.relevance,
+    relevanceLabel:x.relevanceLabel,
+    weight:Number(x.relevanceWeight.toFixed(3))
+  });
+
+  const primaryMatrix = matrixEvidence[0] || null;
+  const references = [
+    ...matrixEvidence.slice(0,4).map(x => ({
+      source:'Matriz', name:x.item.curso, hours:x.item.horas, amount:round500(x.adjusted),
+      score:Number(x.commercialScore.toFixed(3)), relevance:x.relevance, weight:Number(x.relevanceWeight.toFixed(3))
+    })),
+    ...historyEvidence.slice(0,4).map(x => ({
+      source:'Histórico', name:x.item.entrenamiento, client:x.item.cliente, hours:x.item.horas,
+      amount:Number(x.item.importe), score:Number(x.commercialScore.toFixed(3)),
+      relevance:x.relevance, weight:Number(x.relevanceWeight.toFixed(3))
+    }))
+  ];
 
   return {
     suggested: recommended,
@@ -405,40 +527,27 @@ function getPriceSuggestion(query, courseTitle, parsed) {
       basePrice: Number(primaryMatrix.item[modality]) || null,
       adjustedPrice: round500(primaryMatrix.adjusted),
       score: Number(primaryMatrix.sim.toFixed(3)),
-      familyComparable: primaryMatrix.sameFamily
+      familyComparable: primaryMatrix.sameFamily,
+      relevance:primaryMatrix.relevance,
+      weight:Number(primaryMatrix.relevanceWeight.toFixed(3))
     } : null,
-    matrixMedian: matrixMedian ? round500(matrixMedian) : null,
-    matrixCount: validMatrixRefs.length,
-    historicalMedian: histMedian ? round500(histMedian) : null,
-    historicalCount: historyEvidence.filter(x => !family || x.sameFamily).length,
+    matrixMedian: matrixMedianSimple ? round500(matrixMedianSimple) : null,
+    matrixWeighted: matrixWeighted ? round500(matrixWeighted) : null,
+    matrixCount: matrixEvidence.length,
+    historicalMedian: historicalMedianSimple ? round500(historicalMedianSimple) : null,
+    historicalWeighted: historyWeighted ? round500(historyWeighted) : null,
+    historicalCount: historyEvidence.length,
+    strongCount,
+    relatedCount,
     dataRecommended,
     policyApplied,
-    matrixComparables: validMatrixRefs.slice(0,6).map(x => ({
-      course:x.item.curso,
-      hours:x.item.horas,
-      amount:round500(x.adjusted),
-      score:Number(x.commercialScore.toFixed(3))
-    })),
-    historicalComparables: historyEvidence.filter(x => !family || x.sameFamily).slice(0,8).map(x => ({
-      training:x.item.entrenamiento,
-      client:x.item.cliente,
-      hours:x.item.horas,
-      amount:x.item.importe,
-      adjustedAmount:round500(x.adjusted),
-      score:Number(x.commercialScore.toFixed(3))
-    })),
-    // Compatibilidad con versiones anteriores del frontend.
-    comparables: historyEvidence.filter(x => !family || x.sameFamily).slice(0,8).map(x => ({
-      training:x.item.entrenamiento,
-      client:x.item.cliente,
-      hours:x.item.horas,
-      amount:x.item.importe,
-      adjustedAmount:round500(x.adjusted),
-      score:Number(x.commercialScore.toFixed(3))
-    })),
+    matrixComparables: matrixEvidence.slice(0,8).map(serializeMatrix),
+    historicalComparables: historyEvidence.slice(0,8).map(serializeHistory),
+    comparables: historyEvidence.slice(0,8).map(serializeHistory),
     references
   };
 }
+
 function buildChatGptPrompt(query, match, parsed) {
   const base = match
     ? `TEMARIO DEX DE REFERENCIA (úsalo como base, adáptalo y conserva profundidad técnica):\n${match.temario}`
@@ -801,15 +910,25 @@ app.post('/api/dexi/generate', async (req,res) => {
   }
 });
 
-app.get('/api/storage/status', (_req,res) => {
-  res.json({ persistent: HAS_SUPABASE, provider: HAS_SUPABASE ? 'supabase' : 'browser-fallback' });
+app.get('/api/storage/status', async (_req,res) => {
+  if (!HAS_SUPABASE) {
+    return res.json({ persistent:false, connected:false, provider:'none', reason:'not-configured' });
+  }
+  try {
+    await supabaseFetch('dex_cotizaciones?select=id&limit=1', { method:'GET', headers:{Prefer:'return=minimal'} });
+    res.json({ persistent:true, connected:true, provider:'supabase', keyType:SUPABASE_KEY_IS_LEGACY_JWT ? 'legacy-service-role' : 'secret' });
+  } catch (e) {
+    const info = supabasePublicError(e);
+    console.error('[Supabase status]', e.message);
+    res.status(info.status).json({ persistent:false, connected:false, provider:'supabase', code:info.code, error:info.message });
+  }
 });
 
 app.get('/api/quotes', async (req,res) => {
-  if (!HAS_SUPABASE) return res.status(503).json({ error:'El historial compartido aún no está conectado.', persistent:false });
+  if (!HAS_SUPABASE) return res.status(503).json({ error:'El historial compartido aún no está conectado.', persistent:false, code:'SUPABASE_NOT_CONFIGURED' });
   try {
     const q = String(req.query.q || '').trim();
-    let resource = 'dex_cotizaciones?select=*&order=created_at.desc&limit=100';
+    let resource = 'dex_cotizaciones?select=*&order=created_at.desc&limit=200';
     if (q) {
       const safe = q.replace(/[,%()]/g, ' ').trim();
       resource += `&or=(folio.ilike.*${encodeURIComponent(safe)}*,cliente.ilike.*${encodeURIComponent(safe)}*,titulo.ilike.*${encodeURIComponent(safe)}*)`;
@@ -817,52 +936,86 @@ app.get('/api/quotes', async (req,res) => {
     const rows = await supabaseFetch(resource, { method:'GET', headers:{Prefer:'return=minimal'} });
     res.json(rows || []);
   } catch (e) {
-    console.error(e); res.status(500).json({error:'No fue posible consultar el historial compartido.'});
+    const info = supabasePublicError(e);
+    console.error('[Supabase quotes GET]', e.message);
+    res.status(info.status).json({error:info.message, code:info.code, persistent:false});
   }
 });
 
+function quotePayload(p = {}) {
+  const totals = proposalTotals(p);
+  return {
+    cliente: p.client || null,
+    contacto: p.contact || null,
+    titulo: p.title || null,
+    solicitud_cliente: p.clientRequest || null,
+    modalidad: p.modality || null,
+    duracion: p.durationTotal || null,
+    participantes: p.participants || null,
+    plantilla: p.template || 'A',
+    estado: p.status || 'Borrador',
+    monto_cotizado: Number(totals.total || 0),
+    monto_contratado: p.contractedAmount == null || p.contractedAmount === '' ? null : Number(p.contractedAmount),
+    vendedor: p.seller || 'Equipo DEX',
+    data: p
+  };
+}
+
 app.post('/api/quotes', async (req,res) => {
-  if (!HAS_SUPABASE) return res.status(503).json({ error:'El historial compartido aún no está conectado.', persistent:false });
+  if (!HAS_SUPABASE) return res.status(503).json({ error:'El historial compartido aún no está conectado.', persistent:false, code:'SUPABASE_NOT_CONFIGURED' });
   try {
-    const p = req.body || {};
-    const totals = proposalTotals(p);
-    const payload = {
-      folio: null,
-      cliente: p.client || null,
-      contacto: p.contact || null,
-      titulo: p.title || null,
-      solicitud_cliente: p.clientRequest || null,
-      modalidad: p.modality || null,
-      duracion: p.durationTotal || null,
-      participantes: p.participants || null,
-      plantilla: p.template || 'A',
-      estado: p.status || 'Borrador',
-      monto_cotizado: Number(totals.total || 0),
-      monto_contratado: p.contractedAmount == null || p.contractedAmount === '' ? null : Number(p.contractedAmount),
-      vendedor: p.seller || 'Equipo DEX',
-      data: p
-    };
+    const payload = { folio:null, ...quotePayload(req.body || {}) };
     const inserted = await supabaseFetch('dex_cotizaciones?select=*', { method:'POST', body:JSON.stringify(payload) });
     const row = Array.isArray(inserted) ? inserted[0] : inserted;
     if (!row?.id) throw new Error('No se recibió ID de cotización.');
     const year = new Date(row.created_at || Date.now()).getFullYear();
     const folio = `DEX-${year}-${String(row.id).padStart(4,'0')}`;
-    const updated = await supabaseFetch(`dex_cotizaciones?id=eq.${row.id}&select=*`, { method:'PATCH', body:JSON.stringify({folio}) });
-    res.json((Array.isArray(updated) ? updated[0] : updated) || {...row,folio});
+    const storedData = { ...(req.body || {}), folio, historyId:row.id, status:payload.estado };
+    const updated = await supabaseFetch(`dex_cotizaciones?id=eq.${row.id}&select=*`, {
+      method:'PATCH',
+      body:JSON.stringify({folio, data:storedData})
+    });
+    res.json((Array.isArray(updated) ? updated[0] : updated) || {...row,folio,data:storedData});
   } catch (e) {
-    console.error(e); res.status(500).json({error:'No fue posible guardar la cotización en el historial compartido.'});
+    const info = supabasePublicError(e);
+    console.error('[Supabase quotes POST]', e.message);
+    res.status(info.status).json({error:info.message, code:info.code, persistent:false});
+  }
+});
+
+// Guarda cambios sobre la misma cotización para evitar duplicados al volver a guardar.
+app.put('/api/quotes/:id', async (req,res) => {
+  if (!HAS_SUPABASE) return res.status(503).json({ error:'El historial compartido aún no está conectado.', persistent:false, code:'SUPABASE_NOT_CONFIGURED' });
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({error:'ID de cotización inválido.'});
+    const currentRows = await supabaseFetch(`dex_cotizaciones?id=eq.${id}&select=id,folio,created_at`, {method:'GET'});
+    const current = Array.isArray(currentRows) ? currentRows[0] : currentRows;
+    if (!current?.id) return res.status(404).json({error:'Cotización no encontrada.'});
+    const payload = quotePayload(req.body || {});
+    payload.data = { ...(req.body || {}), folio:current.folio, historyId:id, status:payload.estado };
+    const rows = await supabaseFetch(`dex_cotizaciones?id=eq.${id}&select=*`, {method:'PATCH',body:JSON.stringify(payload)});
+    res.json(Array.isArray(rows)?rows[0]:rows);
+  } catch (e) {
+    const info = supabasePublicError(e);
+    console.error('[Supabase quotes PUT]', e.message);
+    res.status(info.status).json({error:info.message, code:info.code, persistent:false});
   }
 });
 
 app.patch('/api/quotes/:id', async (req,res) => {
-  if (!HAS_SUPABASE) return res.status(503).json({ error:'El historial compartido aún no está conectado.', persistent:false });
+  if (!HAS_SUPABASE) return res.status(503).json({ error:'El historial compartido aún no está conectado.', persistent:false, code:'SUPABASE_NOT_CONFIGURED' });
   try {
     const allowed = {};
     if (req.body.estado !== undefined) allowed.estado = req.body.estado;
     if (req.body.monto_contratado !== undefined) allowed.monto_contratado = req.body.monto_contratado === '' ? null : Number(req.body.monto_contratado);
     const rows = await supabaseFetch(`dex_cotizaciones?id=eq.${Number(req.params.id)}&select=*`, {method:'PATCH',body:JSON.stringify(allowed)});
     res.json(Array.isArray(rows)?rows[0]:rows);
-  } catch(e){ console.error(e); res.status(500).json({error:'No fue posible actualizar la cotización.'}); }
+  } catch(e){
+    const info = supabasePublicError(e);
+    console.error('[Supabase quotes PATCH]', e.message);
+    res.status(info.status).json({error:info.message, code:info.code, persistent:false});
+  }
 });
 
 function money(n) {
@@ -1174,4 +1327,4 @@ app.post('/api/export/docx', async (req,res) => {
 
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 3.0 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 3.4 en puerto ${PORT}`));
