@@ -354,7 +354,7 @@ function getPriceSuggestion(query, courseTitle, parsed) {
   }
 
   if (!recommended) {
-    return { suggested:null, recommended:null, competitive:null, premium:null, min:null, max:null, floor:null, confidence:'Baja', modality, family, basis, matrix:null, historicalMedian:null, comparables:[], references:[], policyApplied:false };
+    return { suggested:null, recommended:null, competitive:null, premium:null, min:null, max:null, floor:null, confidence:'Baja', modality, family, basis, matrix:null, matrixMedian:null, matrixCount:0, historicalMedian:null, historicalCount:0, matrixComparables:[], historicalComparables:[], comparables:[], references:[], policyApplied:false };
   }
 
   const evidenceValues = [...matrixValues, ...historyValues].filter(Number.isFinite);
@@ -407,9 +407,27 @@ function getPriceSuggestion(query, courseTitle, parsed) {
       score: Number(primaryMatrix.sim.toFixed(3)),
       familyComparable: primaryMatrix.sameFamily
     } : null,
+    matrixMedian: matrixMedian ? round500(matrixMedian) : null,
+    matrixCount: validMatrixRefs.length,
     historicalMedian: histMedian ? round500(histMedian) : null,
+    historicalCount: historyEvidence.filter(x => !family || x.sameFamily).length,
     dataRecommended,
     policyApplied,
+    matrixComparables: validMatrixRefs.slice(0,6).map(x => ({
+      course:x.item.curso,
+      hours:x.item.horas,
+      amount:round500(x.adjusted),
+      score:Number(x.commercialScore.toFixed(3))
+    })),
+    historicalComparables: historyEvidence.filter(x => !family || x.sameFamily).slice(0,8).map(x => ({
+      training:x.item.entrenamiento,
+      client:x.item.cliente,
+      hours:x.item.horas,
+      amount:x.item.importe,
+      adjustedAmount:round500(x.adjusted),
+      score:Number(x.commercialScore.toFixed(3))
+    })),
+    // Compatibilidad con versiones anteriores del frontend.
     comparables: historyEvidence.filter(x => !family || x.sameFamily).slice(0,8).map(x => ({
       training:x.item.entrenamiento,
       client:x.item.cliente,
