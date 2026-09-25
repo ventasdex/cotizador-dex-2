@@ -34,10 +34,19 @@ const SUPABASE_URL = String(process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
 const HAS_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 
-// Generación profesional DEXI con OpenAI. La clave vive solo en Render.
+// Generación profesional DEXI. Gemini es el proveedor principal y OpenAI puede quedar como respaldo.
+// Las claves viven solo en Render y nunca se exponen al navegador.
+const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '');
+const GEMINI_MODEL = String(process.env.GEMINI_MODEL || 'gemini-3.8-flash');
+const GEMINI_FALLBACK_MODEL = String(process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.1-flash-lite');
+const HAS_GEMINI = Boolean(GEMINI_API_KEY);
+
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '');
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.6-luna');
 const HAS_OPENAI = Boolean(OPENAI_API_KEY);
+
+const DEXI_PROVIDER = String(process.env.DEXI_AI_PROVIDER || (HAS_GEMINI ? 'gemini' : 'openai')).toLowerCase();
+const HAS_AI = HAS_GEMINI || HAS_OPENAI;
 
 async function supabaseFetch(resource, options = {}) {
   if (!HAS_SUPABASE) throw new Error('SUPABASE_NOT_CONFIGURED');
@@ -229,7 +238,7 @@ function buildChatGptPrompt(query, match, parsed) {
 }
 
 app.get('/api/meta', (_req,res) => {
-  res.json({ temarios: TEMARIOS.length, precios: PRECIOS.length, historicos: HISTORICOS.length, consultores: CONSULTORES.length, aiPaid: HAS_OPENAI, aiModel: HAS_OPENAI ? OPENAI_MODEL : null, persistentHistory: HAS_SUPABASE });
+  res.json({ temarios: TEMARIOS.length, precios: PRECIOS.length, historicos: HISTORICOS.length, consultores: CONSULTORES.length, aiConnected: HAS_AI, aiProvider: HAS_GEMINI ? 'Gemini' : (HAS_OPENAI ? 'OpenAI' : null), aiModel: HAS_GEMINI ? GEMINI_MODEL : (HAS_OPENAI ? OPENAI_MODEL : null), persistentHistory: HAS_SUPABASE });
 });
 
 app.get('/api/library', (req,res) => {
@@ -356,6 +365,75 @@ function responseOutputText(data) {
   return chunks.join('').trim();
 }
 
+function geminiOutputText(data) {
+  const chunks = [];
+  for (const candidate of (data?.candidates || [])) {
+    for (const part of (candidate?.content?.parts || [])) {
+      if (typeof part?.text === 'string') chunks.push(part.text);
+    }
+  }
+  return chunks.join('').trim();
+}
+
+async function geminiStructuredProposal(query, parsed, matchInfo, model = GEMINI_MODEL) {
+  if (!HAS_GEMINI) throw new Error('GEMINI_NOT_CONFIGURED');
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const response = await fetch(endpoint, {
+    method:'POST',
+    headers:{
+      'x-goog-api-key': GEMINI_API_KEY,
+      'Content-Type':'application/json'
+    },
+    body:JSON.stringify({
+      systemInstruction:{
+        parts:[{ text:dexiSystemPrompt() }]
+      },
+      contents:[{
+        role:'user',
+        parts:[{ text:dexiUserPrompt(query, parsed, matchInfo) }]
+      }],
+      generationConfig:{
+        responseMimeType:'application/json',
+        responseJsonSchema:DEXI_PROPOSAL_SCHEMA
+      }
+    })
+  });
+  const raw = await response.text();
+  let data = null;
+  try { data = raw ? JSON.parse(raw) : {}; } catch { data = { raw }; }
+  if (!response.ok) {
+    const msg = data?.error?.message || `Gemini ${response.status}`;
+    const err = new Error(msg); err.status = response.status; err.provider = 'Gemini'; err.model = model; throw err;
+  }
+  const text = geminiOutputText(data);
+  if (!text) {
+    const blocked = data?.promptFeedback?.blockReason;
+    throw new Error(blocked ? `Gemini bloqueó la solicitud: ${blocked}` : 'Gemini no devolvió contenido utilizable.');
+  }
+  let proposal;
+  try { proposal = JSON.parse(text); } catch { throw new Error('La respuesta de Gemini no pudo convertirse en la estructura de propuesta.'); }
+  return {
+    proposal,
+    provider:'Gemini',
+    model:data?.modelVersion || model,
+    usage:data?.usageMetadata || null,
+    responseId:data?.responseId || null
+  };
+}
+
+async function geminiProposalWithFallback(query, parsed, matchInfo) {
+  try {
+    return await geminiStructuredProposal(query, parsed, matchInfo, GEMINI_MODEL);
+  } catch (e) {
+    const retryable = [404, 429, 503].includes(Number(e.status));
+    if (retryable && GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL) {
+      console.warn(`DEXI Gemini ${GEMINI_MODEL} no disponible (${e.status || 'error'}). Intentando ${GEMINI_FALLBACK_MODEL}.`);
+      return await geminiStructuredProposal(query, parsed, matchInfo, GEMINI_FALLBACK_MODEL);
+    }
+    throw e;
+  }
+}
+
 async function openAiStructuredProposal(query, parsed, matchInfo) {
   if (!HAS_OPENAI) throw new Error('OPENAI_NOT_CONFIGURED');
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -391,27 +469,68 @@ async function openAiStructuredProposal(query, parsed, matchInfo) {
   if (!text) throw new Error('OpenAI no devolvió contenido utilizable.');
   let proposal;
   try { proposal = JSON.parse(text); } catch { throw new Error('La respuesta de OpenAI no pudo convertirse en la estructura de propuesta.'); }
-  return { proposal, model:data?.model || OPENAI_MODEL, usage:data?.usage || null, responseId:data?.id || null };
+  return { proposal, provider:'OpenAI', model:data?.model || OPENAI_MODEL, usage:data?.usage || null, responseId:data?.id || null };
+}
+
+async function generateDexiProposal(query, parsed, matchInfo) {
+  // Gemini es principal cuando está configurado. OpenAI queda como respaldo opcional.
+  if (DEXI_PROVIDER === 'gemini' && HAS_GEMINI) {
+    try {
+      return await geminiProposalWithFallback(query, parsed, matchInfo);
+    } catch (e) {
+      const transient = [429, 500, 502, 503, 504].includes(Number(e.status));
+      if (transient && HAS_OPENAI) {
+        console.warn('DEXI Gemini no disponible temporalmente. Intentando respaldo OpenAI.');
+        return await openAiStructuredProposal(query, parsed, matchInfo);
+      }
+      throw e;
+    }
+  }
+  if (DEXI_PROVIDER === 'openai' && HAS_OPENAI) {
+    try {
+      return await openAiStructuredProposal(query, parsed, matchInfo);
+    } catch (e) {
+      const transient = [429, 500, 502, 503, 504].includes(Number(e.status));
+      if (transient && HAS_GEMINI) return await geminiProposalWithFallback(query, parsed, matchInfo);
+      throw e;
+    }
+  }
+  if (HAS_GEMINI) return await geminiProposalWithFallback(query, parsed, matchInfo);
+  if (HAS_OPENAI) return await openAiStructuredProposal(query, parsed, matchInfo);
+  throw new Error('AI_NOT_CONFIGURED');
 }
 
 app.post('/api/dexi/generate', async (req,res) => {
   const query = String(req.body.query || '').trim();
   if (!query) return res.status(400).json({ error:'Describe primero lo que solicitó el cliente.' });
-  if (!HAS_OPENAI) return res.status(503).json({ error:'DEXI todavía no tiene conectada la API de OpenAI.' });
+  if (!HAS_AI) return res.status(503).json({ error:'DEXI todavía no tiene conectada una API de inteligencia artificial.' });
   const parsed = parseRequest(query, req.body || {});
   const matchInfo = dexiMatchInfo(query);
   const price = getPriceSuggestion(query, matchInfo.match?.title, parsed);
   try {
-    const ai = await openAiStructuredProposal(query, parsed, matchInfo);
-    res.json({ parsed, matchType:matchInfo.type, match:matchInfo.match, price, generation:ai.proposal, ai:{model:ai.model,usage:ai.usage,responseId:ai.responseId} });
+    const ai = await generateDexiProposal(query, parsed, matchInfo);
+    res.json({
+      parsed,
+      matchType:matchInfo.type,
+      match:matchInfo.match,
+      price,
+      generation:ai.proposal,
+      ai:{provider:ai.provider,model:ai.model,usage:ai.usage,responseId:ai.responseId}
+    });
   } catch (e) {
-    console.error('DEXI OpenAI error:', e.message);
-    const status = e.status === 401 ? 401 : e.status === 429 ? 429 : 502;
-    const friendly = status === 401
-      ? 'La API key de OpenAI no fue aceptada. Revisa OPENAI_API_KEY en Render.'
-      : status === 429
-        ? 'OpenAI rechazó temporalmente la solicitud por saldo, límite o capacidad. Revisa Billing/Limits y vuelve a intentar.'
-        : 'No fue posible generar la propuesta con OpenAI en este momento.';
+    console.error(`DEXI ${e.provider || 'AI'} error:`, e.message);
+    const rawStatus = Number(e.status || 0);
+    const status = [401,403,429].includes(rawStatus) ? rawStatus : 502;
+    let friendly = 'No fue posible generar la propuesta con la IA en este momento.';
+    if (e.provider === 'Gemini' || DEXI_PROVIDER === 'gemini') {
+      if (status === 401 || status === 403) friendly = 'Gemini no aceptó la clave o el proyecto. Revisa GEMINI_API_KEY y el acceso del proyecto en Google AI Studio.';
+      else if (status === 429) friendly = 'Gemini alcanzó temporalmente el límite del nivel gratuito. Espera un momento y vuelve a intentar.';
+      else friendly = 'No fue posible generar la propuesta con Gemini en este momento.';
+    } else if (e.provider === 'OpenAI') {
+      if (status === 401 || status === 403) friendly = 'OpenAI no aceptó la API key configurada en Render.';
+      else if (status === 429) friendly = 'OpenAI rechazó temporalmente la solicitud por saldo, límite o capacidad.';
+      else friendly = 'No fue posible generar la propuesta con OpenAI en este momento.';
+    }
     res.status(status).json({ error:friendly, detail:process.env.NODE_ENV === 'development' ? e.message : undefined });
   }
 });
