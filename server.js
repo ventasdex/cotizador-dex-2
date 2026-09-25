@@ -171,23 +171,87 @@ function percentile(nums, p) {
 }
 
 const PRICE_FAMILIES = {
-  core_tools: ['CORE TOOLS','APQP','PPAP','AMEF','FMEA','MSA','SPC','PLAN DE CONTROL','CONTROL PLAN'],
-  calidad_procesos: ['SCRAP','DESPERDICIO','MERMA','DEFECTO','SOLUCION DE PROBLEMAS','8D','A3','5 PORQUES','ISHIKAWA','CAUSA RAIZ','RCA','MEJORA CONTINUA','LEAN','SIX SIGMA','DMAIC','CONTROL ESTADISTICO','CAPACIDAD DE PROCESO','PROCESO DE MANUFACTURA','CALIDAD'],
-  sistemas_gestion: ['ISO 9001','ISO 14001','ISO 45001','ISO 19011','IATF','VDA','AUDITOR','AUDITORIA','SISTEMA DE GESTION'],
-  liderazgo_personas: ['LIDERAZGO','SUPERVISION','SUPERVISORES','COACHING','EQUIPOS','COMUNICACION','RETROALIMENTACION','DELEGACION','CONFLICTO'],
-  seguridad: ['SEGURIDAD','LOTO','NOM ','STPS','ERGONOM','GRUAS','DERRAMES','RIESGO','EPP'],
-  datos_software: ['EXCEL','POWER BI','MINITAB','DATOS','AUTOMATIZACION','MACROS','VBA'],
-  logistica_operaciones: ['LOGISTICA','INVENTARIO','ALMACEN','CADENA DE SUMINISTRO','COMERCIO EXTERIOR','ADUANA','KANBAN','PRODUCCION']
+  core_tools: {
+    strong: ['CORE TOOLS','APQP','PPAP','AMEF','FMEA','MSA','SPC','PLAN DE CONTROL','CONTROL PLAN'],
+    weak: []
+  },
+  calidad_procesos: {
+    strong: ['SCRAP','DESPERDICIO','MERMA','DEFECTO','8D','A3','5 PORQUES','ISHIKAWA','CAUSA RAIZ','RCA','MEJORA CONTINUA','LEAN','SIX SIGMA','DMAIC','CONTROL ESTADISTICO','CAPACIDAD DE PROCESO','MANUFACTURA','INYECCION','MOLDEO','PROCESO DE PRODUCCION'],
+    weak: ['CALIDAD','PROCESO','PRODUCCION']
+  },
+  sistemas_gestion: {
+    strong: ['ISO 9001','ISO 14001','ISO 45001','ISO 19011','IATF','VDA','AUDITORIA','AUDITOR','SISTEMA DE GESTION'],
+    weak: ['ISO']
+  },
+  liderazgo_personas: {
+    strong: ['CALIDAD EN EL SERVICIO','SERVICIO AL CLIENTE','COMUNICACION ASERTIVA','LIDERAZGO','SUPERVISION','COACHING','EQUIPOS','RETROALIMENTACION','DELEGACION','CONFLICTO'],
+    weak: ['COMUNICACION','PERSONAL']
+  },
+  seguridad: {
+    strong: ['SEGURIDAD','LOTO','BLOQUEO ETIQUETADO','ERGONOMIA','GRUAS','DERRAMES','RIESGO','EPP'],
+    weak: ['NOM','STPS']
+  },
+  datos_software: {
+    strong: ['EXCEL','POWER BI','MINITAB','MACROS','VBA','AUTOMATIZACION'],
+    weak: ['DATOS']
+  },
+  logistica_operaciones: {
+    strong: ['LOGISTICA','INVENTARIO','ALMACEN','CADENA DE SUMINISTRO','COMERCIO EXTERIOR','ADUANA','KANBAN'],
+    weak: ['OPERACIONES']
+  }
+};
+
+// Política comercial DEX: piso interno para evitar que históricos viejos o temas poco comparables
+// empujen hacia abajo las propuestas técnicas especializadas. Se aplica solo a familias calibradas.
+const DEX_COMMERCIAL_POLICY = {
+  core_tools: {
+    presencial: [
+      {maxHours:4, competitive:15000, recommended:18000, premium:22000},
+      {maxHours:8, competitive:22000, recommended:26000, premium:30000},
+      {maxHours:12, competitive:26000, recommended:30000, premium:35000},
+      {maxHours:16, competitive:32000, recommended:38000, premium:44000},
+      {maxHours:24, competitive:46000, recommended:52000, premium:60000}
+    ]
+  },
+  calidad_procesos: {
+    presencial: [
+      {maxHours:4, competitive:15000, recommended:18000, premium:22000},
+      {maxHours:8, competitive:22000, recommended:26000, premium:29500},
+      {maxHours:12, competitive:26000, recommended:30000, premium:35000},
+      {maxHours:16, competitive:32000, recommended:38000, premium:44000},
+      {maxHours:24, competitive:46000, recommended:52000, premium:60000}
+    ]
+  }
 };
 
 function priceFamily(text = '') {
   const n = normalize(text);
-  let best = null, hits = 0;
-  for (const [family, words] of Object.entries(PRICE_FAMILIES)) {
-    const c = words.reduce((sum, w) => sum + (n.includes(normalize(w)) ? 1 : 0), 0);
-    if (c > hits) { hits = c; best = family; }
+  let best = null, bestScore = 0;
+  for (const [family, cfg] of Object.entries(PRICE_FAMILIES)) {
+    let score = 0;
+    for (const w of cfg.strong || []) if (n.includes(normalize(w))) score += 3;
+    for (const w of cfg.weak || []) if (n.includes(normalize(w))) score += 0.5;
+    if (score > bestScore) { bestScore = score; best = family; }
   }
-  return hits ? best : null;
+  // Una sola palabra genérica como CALIDAD/PROCESO no basta para clasificar una familia técnica.
+  return bestScore >= 1.5 ? best : null;
+}
+
+function policyFor(family, modality, requestedHours) {
+  const familyPolicy = DEX_COMMERCIAL_POLICY[family];
+  if (!familyPolicy || !requestedHours) return null;
+  const rows = familyPolicy.presencial || [];
+  if (!rows.length) return null;
+  const base = rows.find(r => requestedHours <= r.maxHours) || rows[rows.length - 1];
+  const scale = requestedHours > base.maxHours ? requestedHours / base.maxHours : 1;
+  const modalityFactor = modality === 'online' ? 0.85 : modality === 'hibrida' ? 0.93 : 1;
+  return {
+    competitive: round500(base.competitive * scale * modalityFactor),
+    recommended: round500(base.recommended * scale * modalityFactor),
+    premium: round500(base.premium * scale * modalityFactor),
+    floor: round500(base.competitive * scale * modalityFactor),
+    source: 'Política comercial DEX para capacitación técnica especializada'
+  };
 }
 
 function adjustedAmount(amount, rowHours, requestedHours) {
@@ -203,6 +267,7 @@ function getPriceSuggestion(query, courseTitle, parsed) {
   const requestedHours = Number(parsed.hours || 0) || null;
   const family = priceFamily(target);
   const desiredType = parsed.openCourse ? 'personal' : 'empresa';
+  const policy = policyFor(family, modality, requestedHours);
 
   const matrixRows = PRECIOS
     .filter(r => !r.tipo || r.tipo === desiredType || (!parsed.openCourse && r.tipo === 'empresa'))
@@ -214,15 +279,16 @@ function getPriceSuggestion(query, courseTitle, parsed) {
       const sameFamily = Boolean(family && rowFamily === family);
       const h = Number(item.horas || 0) || null;
       const hourFit = requestedHours && h ? Math.max(0, 1 - Math.abs(h-requestedHours)/Math.max(requestedHours, h)) : 0.5;
-      const commercialScore = sim * 0.65 + (sameFamily ? 0.25 : 0) + hourFit * 0.10;
-      return { item, sim, sameFamily, hourFit, commercialScore, adjusted:adjustedAmount(raw,h,requestedHours) };
+      const commercialScore = sim * 0.55 + (sameFamily ? 0.35 : 0) + hourFit * 0.10;
+      return { item, sim, rowFamily, sameFamily, hourFit, commercialScore, adjusted:adjustedAmount(raw,h,requestedHours) };
     })
     .filter(Boolean)
     .sort((a,b) => b.commercialScore - a.commercialScore);
 
-  const directMatrix = matrixRows.filter(x => x.sim >= 0.55).slice(0,4);
-  const familyMatrix = matrixRows.filter(x => x.sameFamily && (x.sim >= 0.08 || x.hourFit >= 0.75)).slice(0,6);
-  const durationMatrix = matrixRows.filter(x => requestedHours && Number(x.item.horas) === requestedHours).slice(0,20);
+  // Si conocemos la familia, nunca usamos como respaldo un curso de otra familia solo porque dura lo mismo.
+  const directMatrix = matrixRows.filter(x => x.sim >= 0.55 && (!family || x.sameFamily)).slice(0,4);
+  const familyMatrix = family ? matrixRows.filter(x => x.sameFamily && (x.sim >= 0.08 || x.hourFit >= 0.70)).slice(0,8) : [];
+  const durationMatrix = matrixRows.filter(x => requestedHours && Number(x.item.horas) === requestedHours && (!family || x.sameFamily)).slice(0,12);
   const matrixEvidence = directMatrix.length ? directMatrix : (familyMatrix.length ? familyMatrix : durationMatrix);
 
   const historyRows = HISTORICOS.map(item => {
@@ -233,75 +299,91 @@ function getPriceSuggestion(query, courseTitle, parsed) {
     const sameFamily = Boolean(family && rowFamily === family);
     const h = Number(item.horas || 0) || null;
     const hourFit = requestedHours && h ? Math.max(0, 1 - Math.abs(h-requestedHours)/Math.max(requestedHours, h)) : 0.5;
-    const commercialScore = sim * 0.65 + (sameFamily ? 0.25 : 0) + hourFit * 0.10;
-    return { item, sim, sameFamily, hourFit, commercialScore, adjusted:adjustedAmount(amount,h,requestedHours) };
+    const commercialScore = sim * 0.55 + (sameFamily ? 0.35 : 0) + hourFit * 0.10;
+    return { item, sim, rowFamily, sameFamily, hourFit, commercialScore, adjusted:adjustedAmount(amount,h,requestedHours) };
   }).filter(Boolean)
     .filter(x => parsed.openCourse ? /ABIERTO/i.test(x.item.entrenamiento || '') : !/ABIERTO/i.test(x.item.entrenamiento || ''))
     .sort((a,b) => b.commercialScore - a.commercialScore);
 
-  const directHistory = historyRows.filter(x => x.sim >= 0.50).slice(0,6);
-  const familyHistory = historyRows.filter(x => x.sameFamily && (x.sim >= 0.08 || x.hourFit >= 0.70)).slice(0,8);
-  const durationHistory = historyRows.filter(x => requestedHours && Number(x.item.horas) === requestedHours).slice(0,10);
+  const directHistory = historyRows.filter(x => x.sim >= 0.50 && (!family || x.sameFamily)).slice(0,6);
+  const familyHistory = family ? historyRows.filter(x => x.sameFamily && (x.sim >= 0.08 || x.hourFit >= 0.65)).slice(0,8) : [];
+  const durationHistory = historyRows.filter(x => requestedHours && Number(x.item.horas) === requestedHours && (!family || x.sameFamily)).slice(0,10);
   const historyEvidence = directHistory.length ? directHistory : (familyHistory.length ? familyHistory : durationHistory);
 
   const matrixValues = matrixEvidence.map(x => x.adjusted).filter(Number.isFinite);
   const historyValues = historyEvidence.map(x => x.adjusted).filter(Number.isFinite);
   const durationBaselineValues = matrixRows
-    .filter(x => requestedHours && Number(x.item.horas) === requestedHours)
+    .filter(x => requestedHours && Number(x.item.horas) === requestedHours && (!family || x.sameFamily))
     .map(x => x.adjusted).filter(Number.isFinite);
 
   const matrixMedian = median(matrixValues);
   const histMedian = median(historyValues);
   const durationMedian = median(durationBaselineValues);
 
-  let recommended = null;
+  let dataRecommended = null;
   let basis = 'Sin evidencia suficiente';
   if (directMatrix.length) {
-    if (histMedian) recommended = matrixMedian * 0.60 + histMedian * 0.30 + (durationMedian || matrixMedian) * 0.10;
-    else recommended = matrixMedian * 0.85 + (durationMedian || matrixMedian) * 0.15;
-    basis = 'Coincidencia directa con servicios DEX';
+    if (histMedian) dataRecommended = matrixMedian * 0.60 + histMedian * 0.30 + (durationMedian || matrixMedian) * 0.10;
+    else dataRecommended = matrixMedian * 0.85 + (durationMedian || matrixMedian) * 0.15;
+    basis = 'Coincidencia directa con servicios DEX de la misma familia técnica';
   } else if (familyMatrix.length || familyHistory.length) {
     const parts = [];
     if (matrixMedian) parts.push([matrixMedian,0.45]);
     if (histMedian) parts.push([histMedian,0.35]);
     if (durationMedian) parts.push([durationMedian,0.20]);
     const w = parts.reduce((s,x)=>s+x[1],0);
-    recommended = w ? parts.reduce((s,x)=>s+x[0]*x[1],0)/w : null;
-    basis = family ? 'Familia técnica comparable + duración/modalidad' : 'Servicios comparables por duración/modalidad';
+    dataRecommended = w ? parts.reduce((s,x)=>s+x[0]*x[1],0)/w : null;
+    basis = 'Comparables DEX de la misma familia técnica + duración/modalidad';
   } else if (durationMedian) {
-    recommended = durationMedian;
-    basis = 'Base DEX por duración y modalidad';
+    dataRecommended = durationMedian;
+    basis = 'Comparables DEX de la misma familia por duración y modalidad';
   } else if (histMedian) {
-    recommended = histMedian;
-    basis = 'Históricos DEX comparables';
+    dataRecommended = histMedian;
+    basis = 'Históricos DEX de la misma familia técnica';
   }
 
-  recommended = round500(recommended);
+  dataRecommended = round500(dataRecommended);
+  let recommended = dataRecommended;
+  let policyApplied = false;
+  if (policy && (!recommended || recommended < policy.recommended)) {
+    recommended = policy.recommended;
+    policyApplied = true;
+    basis = dataRecommended
+      ? `${basis}. Ajustado al piso comercial vigente DEX`
+      : policy.source;
+  }
+
   if (!recommended) {
-    return { suggested:null, recommended:null, competitive:null, premium:null, min:null, max:null, confidence:'Baja', modality, family, basis, matrix:null, historicalMedian:null, comparables:[] };
+    return { suggested:null, recommended:null, competitive:null, premium:null, min:null, max:null, floor:null, confidence:'Baja', modality, family, basis, matrix:null, historicalMedian:null, comparables:[], references:[], policyApplied:false };
   }
 
   const evidenceValues = [...matrixValues, ...historyValues].filter(Number.isFinite);
   const p25 = percentile(evidenceValues, 0.25);
   const p75 = percentile(evidenceValues, 0.75);
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const competitiveRaw = p25 ? clamp(p25, recommended*0.86, recommended*0.96) : recommended*0.92;
-  const premiumRaw = p75 ? clamp(p75, recommended*1.05, recommended*1.18) : recommended*1.10;
-  let competitive = round500(competitiveRaw);
-  let premium = round500(premiumRaw);
-  if (competitive >= recommended) competitive = round500(recommended * 0.92);
-  if (premium <= recommended) premium = round500(recommended * 1.10);
+  let competitive = round500(p25 ? clamp(p25, recommended*0.82, recommended*0.90) : recommended*0.85);
+  let premium = round500(p75 ? clamp(p75, recommended*1.10, recommended*1.18) : recommended*1.14);
+
+  if (policy) {
+    competitive = Math.max(competitive || 0, policy.competitive);
+    premium = Math.max(premium || 0, policy.premium);
+  }
+  if (competitive >= recommended) competitive = round500(recommended * 0.85);
+  if (premium <= recommended) premium = round500(recommended * 1.14);
 
   let confidence = 'Baja';
   const strongMatrix = directMatrix.length > 0;
   const familyCount = familyMatrix.length + familyHistory.length;
   if (strongMatrix && (directHistory.length >= 2 || familyHistory.length >= 2)) confidence = 'Alta';
   else if (strongMatrix || familyCount >= 3 || (matrixValues.length >= 3 && historyValues.length >= 1)) confidence = 'Media';
+  // Un piso comercial aporta control interno, pero no convierte por sí solo una referencia débil en confianza alta.
+  if (policy && confidence === 'Baja' && (matrixValues.length + historyValues.length) >= 2) confidence = 'Media';
 
-  const primaryMatrix = (directMatrix[0] || familyMatrix[0] || null);
-  const references = [...matrixEvidence.slice(0,3).map(x => ({
+  const validMatrixRefs = matrixEvidence.filter(x => !family || x.sameFamily);
+  const primaryMatrix = validMatrixRefs[0] || null;
+  const references = [...validMatrixRefs.slice(0,3).map(x => ({
     source:'Matriz', name:x.item.curso, hours:x.item.horas, amount:round500(x.adjusted), score:Number(x.commercialScore.toFixed(3))
-  })), ...historyEvidence.slice(0,3).map(x => ({
+  })), ...historyEvidence.filter(x => !family || x.sameFamily).slice(0,3).map(x => ({
     source:'Histórico', name:x.item.entrenamiento, client:x.item.cliente, hours:x.item.horas, amount:round500(x.adjusted), score:Number(x.commercialScore.toFixed(3))
   }))];
 
@@ -312,6 +394,7 @@ function getPriceSuggestion(query, courseTitle, parsed) {
     premium,
     min: competitive,
     max: premium,
+    floor: policy?.floor || competitive,
     confidence,
     modality,
     family,
@@ -325,7 +408,9 @@ function getPriceSuggestion(query, courseTitle, parsed) {
       familyComparable: primaryMatrix.sameFamily
     } : null,
     historicalMedian: histMedian ? round500(histMedian) : null,
-    comparables: historyEvidence.slice(0,8).map(x => ({
+    dataRecommended,
+    policyApplied,
+    comparables: historyEvidence.filter(x => !family || x.sameFamily).slice(0,8).map(x => ({
       training:x.item.entrenamiento,
       client:x.item.cliente,
       hours:x.item.horas,
