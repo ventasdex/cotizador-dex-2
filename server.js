@@ -285,31 +285,47 @@ function dexiMatchInfo(query) {
 
 function dexiDepthRules(hours) {
   const h = Number(hours || 0);
-  if (!h) return 'Si la duración aún no está definida, desarrolla entre 4 y 6 módulos con profundidad suficiente y evita contenido de relleno.';
+  if (!h) return 'Si la duración aún no está definida, desarrolla entre 4 y 6 módulos con al menos 16 subtemas en total y evita contenido de relleno.';
   if (h <= 4) return 'Desarrolla mínimo 3 módulos y entre 9 y 12 subtemas en total.';
-  if (h <= 8) return 'Desarrolla entre 4 y 5 módulos y entre 12 y 18 subtemas en total.';
-  if (h <= 12) return 'Desarrolla entre 5 y 6 módulos y entre 15 y 22 subtemas en total.';
-  if (h <= 16) return 'Desarrolla entre 6 y 8 módulos y entre 20 y 28 subtemas en total.';
-  if (h <= 24) return 'Desarrolla entre 8 y 10 módulos y entre 28 y 40 subtemas en total.';
+  if (h <= 8) return 'Desarrolla entre 4 y 5 módulos y entre 16 y 24 subtemas en total.';
+  if (h <= 12) return 'Desarrolla entre 5 y 6 módulos y entre 20 y 28 subtemas en total.';
+  if (h <= 16) return 'Desarrolla entre 6 y 8 módulos y entre 24 y 32 subtemas en total.';
+  if (h <= 24) return 'Desarrolla entre 8 y 10 módulos y entre 32 y 44 subtemas en total.';
   return 'Desarrolla entre 10 y 14 módulos y entre 40 y 60 subtemas en total, ajustando la profundidad al número de horas.';
+}
+
+function dexiSchemaDepth(hours) {
+  const h = Number(hours || 0);
+  if (!h) return { minModules:4, minItems:4 };
+  if (h <= 4) return { minModules:3, minItems:3 };
+  if (h <= 8) return { minModules:4, minItems:4 };
+  if (h <= 12) return { minModules:5, minItems:4 };
+  if (h <= 16) return { minModules:6, minItems:4 };
+  if (h <= 24) return { minModules:8, minItems:4 };
+  return { minModules:10, minItems:4 };
 }
 
 function dexiSystemPrompt() {
   return `Eres DEXI, asistente técnico-comercial de DEX México, empresa de capacitación y consultoría industrial. Tu trabajo es convertir una solicitud comercial informal en una propuesta de capacitación profesional, específica, técnicamente coherente y lista para revisión humana.
 
 REGLAS INNEGOCIABLES:
-- Redacta en español profesional, natural y concreto; evita frases genéricas y repetitivas.
+- Redacta en español profesional, natural y concreto; evita frases genéricas, repetitivas o que parezcan texto de relleno.
 - No inventes precios. DEX calcula precios con su motor comercial interno.
 - No inventes ediciones de normas, cláusulas, certificaciones, acreditaciones ni requisitos que el cliente no haya solicitado o que la referencia proporcionada no sustente.
 - Si existe una referencia DEX directa, úsala como base y adáptala a la necesidad real del cliente.
 - Si la referencia es parcial, úsala solo como orientación de estructura/profundidad; no mezcles contenido técnico que no corresponda.
-- Si el tema es nuevo, desarrolla el contenido desde cero con criterio de diseñador instruccional senior.
+- Si el tema es nuevo, desarrolla el contenido desde cero con criterio de diseñador instruccional senior y especialista técnico en el tema.
 - El temario debe ser proporcional a la duración, sin inflarlo artificialmente y sin quedarse superficial.
-- El objetivo general debe expresar el resultado global del entrenamiento. Los objetivos específicos deben ser accionables.
-- La presentación debe explicar el contexto, propósito y valor del entrenamiento, no repetir literalmente el objetivo.
-- La función/beneficio debe explicar el impacto organizacional esperado.
+- Cada módulo debe tener una función clara dentro de la secuencia de aprendizaje; evita títulos vagos como "Generalidades", "Otros temas" o "Aspectos varios".
+- Siempre que sea pertinente, nombra herramientas y métodos concretos en lugar de expresiones genéricas. Ejemplos: Pareto, Ishikawa, 5 Porqués, estratificación, análisis causa-efecto, validación de causas, plan de acción, estandarización y seguimiento.
+- Cuando la necesidad trate de reducción de pérdidas, scrap, defectos, variación, productividad o mejora de proceso, estructura el contenido para cubrir: medición/caracterización del problema, priorización, variables o factores técnicos, análisis de causa raíz, acciones/contramedidas y control/seguimiento.
+- Cuando corresponda, incluye indicadores o criterios de medición útiles para la toma de decisiones. No inventes metas numéricas que el cliente no haya proporcionado.
+- El objetivo general debe expresar el resultado global del entrenamiento. Los objetivos específicos deben ser accionables y usar verbos claros.
+- La presentación debe explicar contexto, propósito y valor del entrenamiento, sin repetir literalmente el objetivo.
+- La función/beneficio debe describir capacidades y resultados esperados sin garantizar ahorros, reducciones o mejoras. Evita expresiones como "disminución directa", "garantiza", "asegura" o equivalentes.
 - Dirigido a debe describir perfiles, áreas o roles pertinentes, sin inventar nombres de puestos demasiado específicos cuando no se conocen.
-- La metodología y entregables van en notes; no incluyas condiciones comerciales estándar de DEX.
+- En notes describe únicamente la metodología de impartición y, si es indispensable, alguna nota técnica específica. No inventes manuales, constancias, certificados, DC-3, grabaciones, licencias, materiales o entregables comerciales: DEX los incorpora por separado con sus reglas estándar.
+- No agregues contenido solo para cumplir cantidad. Cada subtema debe ser técnicamente útil, distinto y directamente relacionado con la solicitud.
 - Si falta modalidad, duración o participantes, conserva "por definir"/null en lugar de inventarlos.`;
 }
 
@@ -324,37 +340,40 @@ function dexiUserPrompt(query, parsed, matchInfo) {
   return `SOLICITUD DEL CLIENTE:\n${query}\n\nDATOS DETECTADOS:\n- Duración: ${parsed.hours || 'por definir'} horas\n- Modalidad: ${parsed.modality || 'por definir'}\n- Participantes: ${parsed.participants || 'por definir'}\n\nTIPO DE COINCIDENCIA: ${matchInfo.type}\n${reference}\n\nPROFUNDIDAD REQUERIDA:\n${dexiDepthRules(parsed.hours)}\n\nGenera una propuesta completa que incluya título, presentación, objetivo general, 4 a 6 objetivos específicos, función/beneficio, dirigido a, temario modular, modalidad, duración, participantes y notas de metodología/entregables. No generes precio.`;
 }
 
-const DEXI_PROPOSAL_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    title: { type:'string' },
-    presentation: { type:'string' },
-    objectiveGeneral: { type:'string' },
-    objectives: { type:'array', items:{ type:'string' }, minItems:4, maxItems:6 },
-    benefit: { type:'string' },
-    audience: { type:'string' },
-    modality: { type:'string', enum:['presencial','online','hibrida','por definir'] },
-    durationHours: { type:['number','null'] },
-    participants: { type:['integer','null'] },
-    temario: {
-      type:'array',
-      minItems:3,
-      items:{
-        type:'object',
-        additionalProperties:false,
-        properties:{
-          title:{ type:'string' },
-          items:{ type:'array', items:{ type:'string' }, minItems:2 }
-        },
-        required:['title','items']
-      }
+function dexiProposalSchema(hours) {
+  const depth = dexiSchemaDepth(hours);
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      title: { type:'string' },
+      presentation: { type:'string' },
+      objectiveGeneral: { type:'string' },
+      objectives: { type:'array', items:{ type:'string' }, minItems:4, maxItems:6 },
+      benefit: { type:'string' },
+      audience: { type:'string' },
+      modality: { type:'string', enum:['presencial','online','hibrida','por definir'] },
+      durationHours: { type:['number','null'] },
+      participants: { type:['integer','null'] },
+      temario: {
+        type:'array',
+        minItems:depth.minModules,
+        items:{
+          type:'object',
+          additionalProperties:false,
+          properties:{
+            title:{ type:'string' },
+            items:{ type:'array', items:{ type:'string' }, minItems:depth.minItems }
+          },
+          required:['title','items']
+        }
+      },
+      considerations: { type:'array', items:{ type:'string' } },
+      notes: { type:'string' }
     },
-    considerations: { type:'array', items:{ type:'string' } },
-    notes: { type:'string' }
-  },
-  required:['title','presentation','objectiveGeneral','objectives','benefit','audience','modality','durationHours','participants','temario','considerations','notes']
-};
+    required:['title','presentation','objectiveGeneral','objectives','benefit','audience','modality','durationHours','participants','temario','considerations','notes']
+  };
+}
 
 function responseOutputText(data) {
   if (typeof data?.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
@@ -396,7 +415,7 @@ async function geminiStructuredProposal(query, parsed, matchInfo, model = GEMINI
       }],
       generationConfig:{
         responseMimeType:'application/json',
-        responseJsonSchema:DEXI_PROPOSAL_SCHEMA
+        responseJsonSchema:dexiProposalSchema(parsed.hours)
       }
     })
   });
@@ -490,7 +509,7 @@ async function openAiStructuredProposal(query, parsed, matchInfo) {
           type:'json_schema',
           name:'dexi_proposal',
           strict:true,
-          schema:DEXI_PROPOSAL_SCHEMA
+          schema:dexiProposalSchema(parsed.hours)
         }
       }
     })
