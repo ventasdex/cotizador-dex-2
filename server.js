@@ -302,8 +302,34 @@ const DEX_COMMERCIAL_POLICY = {
   }
 };
 
+function containsFamilyTerm(normalizedText, term) {
+  const n = ` ${normalizedText} `;
+  const t = ` ${normalize(term)} `;
+  return n.includes(t);
+}
+
 function priceFamily(text = '') {
   const n = normalize(text);
+  if (!n) return null;
+
+  // Clasificadores prioritarios. Evitan que palabras genéricas como PROCESO,
+  // MANUFACTURA, RIESGO o VDA desplacen a una familia explícita.
+  // En especial, AMEF AIAG & VDA debe seguir siendo CORE TOOLS.
+  const hardRules = [
+    ['core_tools', ['CORE TOOLS','AMEF','FMEA','APQP','PPAP','MSA','SPC','PLAN DE CONTROL','CONTROL PLAN']],
+    ['sistemas_gestion', ['ISO 9001','ISO 14001','ISO 45001','ISO 19011','IATF 16949','IATF','VDA 6 3','VDA 6 5','AUDITORIA','AUDITOR','SISTEMA DE GESTION']],
+    ['liderazgo_personas', ['LIDERAZGO','COACHING','SUPERVISION','COMUNICACION ASERTIVA','SERVICIO AL CLIENTE','CALIDAD EN EL SERVICIO','RETROALIMENTACION','DELEGACION','CONFLICTO']],
+    ['datos_software', ['EXCEL','POWER BI','MINITAB','MACROS','VBA']],
+    ['seguridad', ['LOTO','BLOQUEO ETIQUETADO','ERGONOMIA','GRUAS','DERRAMES','EPP']],
+    ['logistica_operaciones', ['LOGISTICA','INVENTARIO','ALMACEN','CADENA DE SUMINISTRO','COMERCIO EXTERIOR','ADUANA']],
+    ['calidad_procesos', ['SCRAP','DESPERDICIO','MERMA','8D','A3','5 PORQUES','ISHIKAWA','CAUSA RAIZ','RCA','LEAN','SIX SIGMA','DMAIC','CAPACIDAD DE PROCESO','INYECCION','MOLDEO']]
+  ];
+
+  for (const [family, terms] of hardRules) {
+    if (terms.some(term => containsFamilyTerm(n, term))) return family;
+  }
+
+  // Fallback por puntuación para solicitudes menos explícitas.
   let best = null, bestScore = 0;
   for (const [family, cfg] of Object.entries(PRICE_FAMILIES)) {
     let score = 0;
