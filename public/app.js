@@ -189,9 +189,19 @@ async function runDexi(){
         <p><span class="pill">Confianza ${p.confidence}</span> · Rango comercial <b>${money(p.min)} – ${money(p.max)}</b></p>
         <p><b>Base:</b> ${escapeHtml(p.basis||'Referencias DEX')}</p>
         ${p.floor?`<p><b>Piso comercial DEX:</b> ${money(p.floor)} + IVA <small>· por debajo de este monto conviene revisar margen/autorización.</small></p>`:''}
-        ${p.policyApplied?`<p><small>El histórico/matriz quedó por debajo de la política comercial vigente; DEXI ajustó la recomendación para proteger el posicionamiento y margen.</small></p>`:''}
-        ${Array.isArray(p.references)&&p.references.length?`<p><b>Referencias internas válidas:</b> ${p.references.slice(0,3).map(r=>`${escapeHtml(r.name)} (${r.hours||'—'} h · ${money(r.amount)})`).join(' · ')}</p>`:''}
-        ${p.historicalMedian?`<p>Mediana histórica comparable: ${money(p.historicalMedian)} · ${p.comparables.length} referencia(s)</p>`:''}
+        ${p.policyApplied?`<p class="price-policy-note"><small>Los comparables quedaron por debajo de la política comercial vigente; DEXI ajustó la recomendación para proteger posicionamiento y margen.</small></p>`:''}
+        <div class="price-evidence-grid">
+          <div class="price-evidence-card">
+            <div class="evidence-title">Matriz DEX</div>
+            ${p.matrixMedian?`<div class="evidence-median">Mediana comparable <b>${money(p.matrixMedian)}</b></div>`:'<div class="evidence-empty">Sin referencias de matriz suficientemente comparables.</div>'}
+            ${Array.isArray(p.matrixComparables)&&p.matrixComparables.length?`<ul>${p.matrixComparables.slice(0,3).map(r=>`<li>${escapeHtml(r.course)} <span>${r.hours||'—'} h · ${money(r.amount)}</span></li>`).join('')}</ul>`:''}
+          </div>
+          <div class="price-evidence-card">
+            <div class="evidence-title">Operaciones históricas DEX</div>
+            ${p.historicalMedian?`<div class="evidence-median">Mediana real <b>${money(p.historicalMedian)}</b> · ${p.historicalCount||p.historicalComparables?.length||0} referencia(s)</div>`:'<div class="evidence-empty">Sin operaciones históricas suficientemente comparables.</div>'}
+            ${Array.isArray(p.historicalComparables)&&p.historicalComparables.length?`<ul>${p.historicalComparables.slice(0,3).map(r=>`<li>${escapeHtml(r.training)}${r.client?` <em>· ${escapeHtml(r.client)}</em>`:''} <span>${r.hours||'—'} h · ${money(r.adjustedAmount||r.amount)}</span></li>`).join('')}</ul>`:''}
+          </div>
+        </div>
       `:'<p>Aún no hay suficientes referencias internas para sugerir un precio automático.</p>'}</div>
       <div class="modal-actions"><button class="btn btn-dexi" id="applyAiProposal">✦ Aplicar propuesta completa</button><button class="btn btn-light" id="closeDexiReview">Revisar después</button></div>`;
     $('applyAiProposal').onclick=()=>{applyGeneratedProposal(g);hideModal();};
