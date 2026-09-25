@@ -180,10 +180,20 @@ async function runDexi(){
       <div class="result-card"><h3>Solicitud entendida</h3><span class="pill">${escapeHtml(detected)}</span></div>
       <div class="result-card"><h3>Referencia DEX</h3>${matchHtml}</div>
       <div class="result-card"><h3>Propuesta generada</h3><b>${escapeHtml(g.title||'Propuesta DEX')}</b><p>${escapeHtml(g.presentation||'')}</p>${previewModules?`<ul>${previewModules}</ul>`:''}<p><small>Generada con ${escapeHtml(d.ai?.provider||'IA')} · ${escapeHtml(d.ai?.model||'modelo disponible')}.</small></p></div>
-      <div class="result-card"><h3>Precio DEXI</h3>${p.suggested?`<div class="price-big">${money(p.suggested)} + IVA</div><span class="pill">Confianza ${p.confidence}</span><p>Rango sugerido: <b>${money(p.min)} – ${money(p.max)}</b></p>${p.matrix?`<p>Matriz DEX: ${escapeHtml(p.matrix.course)} · ${money(p.matrix.adjustedPrice)}</p>`:''}${p.historicalMedian?`<p>Mediana histórica comparable: ${money(p.historicalMedian)} · ${p.comparables.length} referencia(s)</p>`:''}`:'<p>Aún no hay suficientes referencias internas para sugerir un precio automático.</p>'}</div>
-      <div class="modal-actions"><button class="btn btn-dexi" id="applyAiProposal">✦ Aplicar propuesta completa</button>${p.suggested?'<button class="btn btn-light" id="applyPrice">Aplicar precio sugerido</button>':''}<button class="btn btn-light" id="closeDexiReview">Revisar después</button></div>`;
+      <div class="result-card"><h3>Precio DEXI</h3>${p.recommended?`
+        <div class="price-options">
+          <div class="price-option"><small>COMPETITIVO</small><b>${money(p.competitive)} + IVA</b><span>Prioriza facilidad de cierre</span><button class="mini-btn" data-price-tier="competitive">Usar</button></div>
+          <div class="price-option featured"><small>RECOMENDADO</small><b>${money(p.recommended)} + IVA</b><span>Equilibrio entre mercado y margen</span><button class="mini-btn" data-price-tier="recommended">Usar</button></div>
+          <div class="price-option"><small>PREMIUM</small><b>${money(p.premium)} + IVA</b><span>Mayor margen / especialización</span><button class="mini-btn" data-price-tier="premium">Usar</button></div>
+        </div>
+        <p><span class="pill">Confianza ${p.confidence}</span> · Rango comercial <b>${money(p.min)} – ${money(p.max)}</b></p>
+        <p><b>Base:</b> ${escapeHtml(p.basis||'Referencias DEX')}</p>
+        ${p.matrix && (p.matrix.score>=0.30 || p.matrix.familyComparable)?`<p>Referencia de matriz: ${escapeHtml(p.matrix.course)} · ${money(p.matrix.adjustedPrice)}</p>`:''}
+        ${p.historicalMedian?`<p>Mediana histórica comparable: ${money(p.historicalMedian)} · ${p.comparables.length} referencia(s)</p>`:''}
+      `:'<p>Aún no hay suficientes referencias internas para sugerir un precio automático.</p>'}</div>
+      <div class="modal-actions"><button class="btn btn-dexi" id="applyAiProposal">✦ Aplicar propuesta completa</button><button class="btn btn-light" id="closeDexiReview">Revisar después</button></div>`;
     $('applyAiProposal').onclick=()=>{applyGeneratedProposal(g);hideModal();};
-    if($('applyPrice')) $('applyPrice').onclick=()=>applyDexiPrice();
+    target.querySelectorAll('[data-price-tier]').forEach(btn=>btn.onclick=()=>applyDexiPrice(btn.dataset.priceTier));
     $('closeDexiReview').onclick=hideModal;
   }catch(e){
     target.innerHTML=`<div class="result-card"><h3>No pude generar la propuesta</h3><p>${escapeHtml(e.message)}</p><p>DEXI ya realizó reintentos automáticos y, cuando aplica, probó el modelo alterno. Si Google está temporalmente saturado, espera unos minutos y vuelve a intentarlo.</p></div><div class="modal-actions"><button class="btn btn-dexi" id="retryDexi">Reintentar</button></div>`;
@@ -193,18 +203,24 @@ async function runDexi(){
 
 function applyDexiAll(){
   const d=currentDexi;if(!d)return;
+  if(d.generation) return applyGeneratedProposal(d.generation);
   if(d.match){ $('title').value=d.match.title; $('temario').value=d.match.temario; const t=courseTextBasics(d.match.title); Object.entries(t).forEach(([k,v])=>$(k).value=v); }
   if(d.parsed?.modality) $('modality').value=d.parsed.modality==='online'?'online':d.parsed.modality==='presencial'?'presencial':'hibrida';
   if(d.parsed?.hours) $('durationTotal').value=`${d.parsed.hours} horas`;
   if(d.parsed?.participants){ $('participants').value=`${d.parsed.participants} participantes`; if($('participantsMax')) $('participantsMax').value=d.parsed.participants; syncStandardConsiderations(); }
-  applyDexiPrice(); toast('DEXI aplicó temario y referencia de precio');
+  toast('DEXI aplicó únicamente el contenido de la propuesta');
 }
-function applyDexiPrice(){
-  const d=currentDexi;if(!d?.price?.suggested)return;
+function applyDexiPrice(tier='recommended'){
+  const d=currentDexi;if(!d?.price?.recommended)return;
+  const p=d.price;
+  const price=Number(p[tier] || p.recommended || p.suggested);
+  if(!price)return;
   const hours=d.parsed.hours||d.match?.durationHours||d.price.matrix?.hours;
-  addConcept({service:d.match?.title||$('title').value||'Servicio DEX',duration:hours?`${hours} h`:'',price:d.price.suggested});
-  $('priceHint').innerHTML=`Precio sugerido por DEXI: <b>${money(d.price.suggested)} + IVA</b> · rango ${money(d.price.min)}–${money(d.price.max)} · confianza ${d.price.confidence}.`;
+  const labels={competitive:'Competitivo',recommended:'Recomendado',premium:'Premium'};
+  addConcept({service:d.generation?.title||d.match?.title||$('title').value||'Servicio DEX',duration:hours?`${hours} h`:'',price});
+  $('priceHint').innerHTML=`Precio ${labels[tier]||'Recomendado'} aplicado: <b>${money(price)} + IVA</b> · rango comercial ${money(p.min)}–${money(p.max)} · confianza ${p.confidence}.`;
   $('priceHint').classList.remove('hidden');
+  toast(`Precio ${labels[tier]||'Recomendado'} aplicado`);
 }
 
 $('suggestPrice').onclick=async()=>{
@@ -213,9 +229,10 @@ $('suggestPrice').onclick=async()=>{
   const mode=$('modality').value==='online'?' online':$('modality').value==='presencial'?' presencial':'';
   currentDexi=await api('/api/dexi/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:`${title}${hours?` ${hours} horas`:''}${mode}`})});
   const p=currentDexi.price;
-  if(!p.suggested)return toast('No hay suficientes referencias para sugerir precio.');
-  $('priceHint').innerHTML=`DEXI recomienda <b>${money(p.suggested)} + IVA</b>. Rango: ${money(p.min)}–${money(p.max)} · confianza ${p.confidence}. <button class="mini-btn" id="useSuggested">Usar precio</button>`;
-  $('priceHint').classList.remove('hidden'); $('useSuggested').onclick=applyDexiPrice;
+  if(!p.recommended)return toast('No hay suficientes referencias para sugerir precio.');
+  $('priceHint').innerHTML=`DEXI propone: <b>Competitivo ${money(p.competitive)}</b> · <b>Recomendado ${money(p.recommended)}</b> · <b>Premium ${money(p.premium)}</b> + IVA · confianza ${p.confidence}. <button class="mini-btn" data-quick-tier="competitive">Usar competitivo</button> <button class="mini-btn" data-quick-tier="recommended">Usar recomendado</button> <button class="mini-btn" data-quick-tier="premium">Usar premium</button>`;
+  $('priceHint').classList.remove('hidden');
+  $('priceHint').querySelectorAll('[data-quick-tier]').forEach(btn=>btn.onclick=()=>applyDexiPrice(btn.dataset.quickTier));
 };
 
 async function openCatalog(){
