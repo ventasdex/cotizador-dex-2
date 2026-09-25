@@ -188,7 +188,9 @@ async function runDexi(){
         </div>
         <p><span class="pill">Confianza ${p.confidence}</span> · Rango comercial <b>${money(p.min)} – ${money(p.max)}</b></p>
         <p><b>Base:</b> ${escapeHtml(p.basis||'Referencias DEX')}</p>
-        ${p.matrix && (p.matrix.score>=0.30 || p.matrix.familyComparable)?`<p>Referencia de matriz: ${escapeHtml(p.matrix.course)} · ${money(p.matrix.adjustedPrice)}</p>`:''}
+        ${p.floor?`<p><b>Piso comercial DEX:</b> ${money(p.floor)} + IVA <small>· por debajo de este monto conviene revisar margen/autorización.</small></p>`:''}
+        ${p.policyApplied?`<p><small>El histórico/matriz quedó por debajo de la política comercial vigente; DEXI ajustó la recomendación para proteger el posicionamiento y margen.</small></p>`:''}
+        ${Array.isArray(p.references)&&p.references.length?`<p><b>Referencias internas válidas:</b> ${p.references.slice(0,3).map(r=>`${escapeHtml(r.name)} (${r.hours||'—'} h · ${money(r.amount)})`).join(' · ')}</p>`:''}
         ${p.historicalMedian?`<p>Mediana histórica comparable: ${money(p.historicalMedian)} · ${p.comparables.length} referencia(s)</p>`:''}
       `:'<p>Aún no hay suficientes referencias internas para sugerir un precio automático.</p>'}</div>
       <div class="modal-actions"><button class="btn btn-dexi" id="applyAiProposal">✦ Aplicar propuesta completa</button><button class="btn btn-light" id="closeDexiReview">Revisar después</button></div>`;
@@ -218,7 +220,7 @@ function applyDexiPrice(tier='recommended'){
   const hours=d.parsed.hours||d.match?.durationHours||d.price.matrix?.hours;
   const labels={competitive:'Competitivo',recommended:'Recomendado',premium:'Premium'};
   addConcept({service:d.generation?.title||d.match?.title||$('title').value||'Servicio DEX',duration:hours?`${hours} h`:'',price});
-  $('priceHint').innerHTML=`Precio ${labels[tier]||'Recomendado'} aplicado: <b>${money(price)} + IVA</b> · rango comercial ${money(p.min)}–${money(p.max)} · confianza ${p.confidence}.`;
+  $('priceHint').innerHTML=`Precio ${labels[tier]||'Recomendado'} aplicado: <b>${money(price)} + IVA</b> · rango comercial ${money(p.min)}–${money(p.max)} · confianza ${p.confidence}.${p.floor?` Piso DEX: ${money(p.floor)}.`:''}`;
   $('priceHint').classList.remove('hidden');
   toast(`Precio ${labels[tier]||'Recomendado'} aplicado`);
 }
