@@ -232,6 +232,29 @@ function participantFit(rowParticipants, requestedParticipants) {
   return { fit, known:true, row, requested:req, label:`Grupo comparable: ${Math.round(row)} vs ${Math.round(req)}` };
 }
 
+function leadershipComparableLevel(text = '') {
+  const n = normalize(text);
+  if (!n) return 'contextual';
+  const strong = ['LIDERAZGO','SUPERVISION','SUPERVISOR','COACHING','GESTION DE EQUIPOS','DIRECCION DE EQUIPOS','MANDOS','DELEGACION'];
+  const related = ['COMUNICACION ASERTIVA','COMUNICACION','RETROALIMENTACION','FEEDBACK','CONFLICTO','SERVICIO AL CLIENTE','CALIDAD EN EL SERVICIO'];
+  if (strong.some(term => n.includes(normalize(term)))) return 'strong';
+  if (related.some(term => n.includes(normalize(term)))) return 'related';
+  return 'contextual';
+}
+
+function refineFamilyRelevance(family, rowText, rel) {
+  if (family !== 'liderazgo_personas' || !rel) return rel;
+  const level = leadershipComparableLevel(rowText);
+  if (level === 'strong') return rel;
+  if (level === 'related' && rel.tier === 'strong') {
+    return {...rel, tier:'related', label:'Relacionada', weight:Math.max(0.05, rel.weight * 0.72)};
+  }
+  if (level === 'contextual' && rel.tier !== 'contextual') {
+    return {...rel, tier:'contextual', label:'Contextual', weight:Math.max(0.03, rel.weight * 0.35)};
+  }
+  return rel;
+}
+
 function relevanceTier({ sameFamily, sim, rowHours, requestedHours, rowParticipants, requestedParticipants }) {
   const d = durationFit(rowHours, requestedHours);
   const pf = participantFit(rowParticipants, requestedParticipants);
@@ -443,7 +466,8 @@ async function getPriceSuggestion(query, courseTitle, parsed) {
       const sameFamily = Boolean(family && rowFamily === family);
       const h = Number(item.horas || 0) || null;
       const rowParticipants = parseParticipantCount(item.participantes || item.participants || item.participantesMax || item.participantesMin);
-      const rel = relevanceTier({ sameFamily, sim, rowHours:h, requestedHours, rowParticipants, requestedParticipants });
+      let rel = relevanceTier({ sameFamily, sim, rowHours:h, requestedHours, rowParticipants, requestedParticipants });
+      rel = refineFamilyRelevance(family, item.curso || '', rel);
       const commercialScore = sim * 0.40 + (sameFamily ? 0.25 : 0) + rel.durationFit * 0.20 + rel.participantFit * 0.15;
       return {
         item, sim, rowFamily, sameFamily, commercialScore,
@@ -477,7 +501,8 @@ async function getPriceSuggestion(query, courseTitle, parsed) {
     const sameFamily = Boolean(family && rowFamily === family);
     const h = Number(item.horas || 0) || null;
     const rowParticipants = parseParticipantCount(item.participantes || item.participants);
-    const rel = relevanceTier({ sameFamily, sim, rowHours:h, requestedHours, rowParticipants, requestedParticipants });
+    let rel = relevanceTier({ sameFamily, sim, rowHours:h, requestedHours, rowParticipants, requestedParticipants });
+    rel = refineFamilyRelevance(family, item.entrenamiento || '', rel);
     const commercialScore = sim * 0.40 + (sameFamily ? 0.25 : 0) + rel.durationFit * 0.20 + rel.participantFit * 0.15;
     return {
       item, sim, rowFamily, sameFamily, commercialScore,
@@ -582,8 +607,11 @@ async function getPriceSuggestion(query, courseTitle, parsed) {
   else if (strongCount >= 1 || relatedCount >= 3) confidence = 'Media';
   if (policy && confidence === 'Baja' && (matrixEvidence.length + historyEvidence.length) >= 2) confidence = 'Media';
   const participantEvidence = [...matrixEvidence, ...historyEvidence].filter(x => x.participantKnown && x.participantFit >= 0.75);
-  // Si el cliente sí indicó tamaño de grupo pero ninguna referencia lo documenta, no afirmamos confianza alta.
-  if (requestedParticipants && !participantEvidence.length && confidence === 'Alta') confidence = 'Media';
+  const strongParticipantEvidence = [...matrixEvidence, ...historyEvidence].filter(x => x.relevance === 'strong' && x.participantKnown && x.participantFit >= 0.75);
+  const exactParticipantEvidence = [...matrixEvidence, ...historyEvidence].filter(x => x.participantKnown && x.participantFit >= 0.75 && x.durationFit >= 0.90 && Number(x.sim || 0) >= 0.45);
+  // Con participantes solicitados, la confianza Alta requiere evidencia comercial real del tamaño de grupo:
+  // al menos dos comparables fuertes con grupo conocido, o una coincidencia casi exacta con grupo conocido.
+  if (requestedParticipants && confidence === 'Alta' && strongParticipantEvidence.length < 2 && exactParticipantEvidence.length < 1) confidence = 'Media';
 
   const serializeMatrix = x => ({
     course:x.item.curso,
@@ -1449,4 +1477,4 @@ app.post('/api/export/docx', async (req,res) => {
 
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 3.5 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 3.8 en puerto ${PORT}`));
