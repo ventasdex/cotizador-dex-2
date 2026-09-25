@@ -37,8 +37,10 @@ const HAS_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 // Generación profesional DEXI. Gemini es el proveedor principal y OpenAI puede quedar como respaldo.
 // Las claves viven solo en Render y nunca se exponen al navegador.
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '');
-const GEMINI_MODEL = String(process.env.GEMINI_MODEL || 'gemini-3.8-flash');
-const GEMINI_FALLBACK_MODEL = String(process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.1-flash-lite');
+const GEMINI_MODEL = String(process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite');
+const GEMINI_FALLBACK_MODEL = String(process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.8-flash');
+const GEMINI_MAX_ATTEMPTS = Math.max(1, Math.min(3, Number(process.env.GEMINI_MAX_ATTEMPTS || 2)));
+const GEMINI_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const HAS_GEMINI = Boolean(GEMINI_API_KEY);
 
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '');
@@ -421,14 +423,49 @@ async function geminiStructuredProposal(query, parsed, matchInfo, model = GEMINI
   };
 }
 
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function retryDelayMs(attempt) {
+  // Backoff corto para no hacer esperar demasiado a la vendedora.
+  // 1er reintento ~1.5 s, 2do ~3 s.
+  return Math.min(6000, 1500 * Math.pow(2, Math.max(0, attempt - 1)));
+}
+
+async function geminiWithRetry(query, parsed, matchInfo, model, maxAttempts = GEMINI_MAX_ATTEMPTS) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await geminiStructuredProposal(query, parsed, matchInfo, model);
+    } catch (e) {
+      lastError = e;
+      const status = Number(e.status || 0);
+      const retryable = GEMINI_RETRYABLE_STATUS.has(status);
+      if (!retryable || attempt >= maxAttempts) throw e;
+      const delay = retryDelayMs(attempt);
+      console.warn(`DEXI Gemini ${model} respondió ${status || 'error'}. Reintento ${attempt + 1}/${maxAttempts} en ${delay} ms.`);
+      await wait(delay);
+    }
+  }
+  throw lastError || new Error(`Gemini ${model} no respondió.`);
+}
+
 async function geminiProposalWithFallback(query, parsed, matchInfo) {
   try {
-    return await geminiStructuredProposal(query, parsed, matchInfo, GEMINI_MODEL);
+    return await geminiWithRetry(query, parsed, matchInfo, GEMINI_MODEL);
   } catch (e) {
-    const retryable = [404, 429, 503].includes(Number(e.status));
-    if (retryable && GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL) {
-      console.warn(`DEXI Gemini ${GEMINI_MODEL} no disponible (${e.status || 'error'}). Intentando ${GEMINI_FALLBACK_MODEL}.`);
-      return await geminiStructuredProposal(query, parsed, matchInfo, GEMINI_FALLBACK_MODEL);
+    const status = Number(e.status || 0);
+    const canFallback = [404, 429, 500, 502, 503, 504].includes(status);
+    if (canFallback && GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL) {
+      console.warn(`DEXI Gemini ${GEMINI_MODEL} no disponible después de reintentos (${status || 'error'}). Cambiando a ${GEMINI_FALLBACK_MODEL}.`);
+      try {
+        return await geminiWithRetry(query, parsed, matchInfo, GEMINI_FALLBACK_MODEL);
+      } catch (fallbackError) {
+        fallbackError.primaryModel = GEMINI_MODEL;
+        fallbackError.fallbackModel = GEMINI_FALLBACK_MODEL;
+        throw fallbackError;
+      }
     }
     throw e;
   }
@@ -524,8 +561,9 @@ app.post('/api/dexi/generate', async (req,res) => {
     let friendly = 'No fue posible generar la propuesta con la IA en este momento.';
     if (e.provider === 'Gemini' || DEXI_PROVIDER === 'gemini') {
       if (status === 401 || status === 403) friendly = 'Gemini no aceptó la clave o el proyecto. Revisa GEMINI_API_KEY y el acceso del proyecto en Google AI Studio.';
-      else if (status === 429) friendly = 'Gemini alcanzó temporalmente el límite del nivel gratuito. Espera un momento y vuelve a intentar.';
-      else friendly = 'No fue posible generar la propuesta con Gemini en este momento.';
+      else if (status === 429) friendly = 'Gemini alcanzó un límite temporal de solicitudes o cuota. DEXI ya intentó automáticamente con el modelo alterno.';
+      else if (rawStatus === 503) friendly = 'Gemini está temporalmente no disponible (503). DEXI ya hizo reintentos automáticos y probó el modelo alterno.';
+      else friendly = 'No fue posible generar la propuesta con Gemini en este momento, incluso después de los reintentos automáticos.';
     } else if (e.provider === 'OpenAI') {
       if (status === 401 || status === 403) friendly = 'OpenAI no aceptó la API key configurada en Render.';
       else if (status === 429) friendly = 'OpenAI rechazó temporalmente la solicitud por saldo, límite o capacidad.';
