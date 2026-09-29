@@ -1671,17 +1671,17 @@ app.post('/api/export/docx', async (req,res) => {
         const headFill = idx%2===0 ? theme.dark : '1499A3';
         const head=table([row([
           cell([paragraph(num,{size:15.5,bold:true,color:'FFFFFF',alignment:AlignmentType.CENTER,after:0})],{width:15,fill:headFill,top:70,bottom:70,left:40,right:40}),
-          cell([paragraph(m.title,{size:17.8,bold:true,color:'FFFFFF',after:0})],{width:85,fill:headFill,top:70,bottom:70,left:90,right:90})
+          cell([paragraph(m.title,{size:19.2,bold:true,color:'FFFFFF',after:0})],{width:85,fill:headFill,top:70,bottom:70,left:90,right:90})
         ])],[1500,8500]);
         const body=[];
-        m.items.forEach(it=>body.push(bullet(it,{size:17.2,after:25,line:236})));
+        m.items.forEach(it=>body.push(bullet(it,{size:19.0,after:34,line:252})));
         return cell([head,...body],{width:wide?100:50,fill:'FFFFFF',top:0,bottom:100,left:0,right:0,borders:lightBorders});
       }
       const kids=[
         paragraph(num,{size:16,bold:true,color:theme.accent,after:55,alignment:template==='C'?AlignmentType.CENTER:AlignmentType.LEFT}),
-        paragraph(m.title,{size:18.5,bold:true,color:theme.ink,after:60})
+        paragraph(m.title,{size:20.0,bold:true,color:theme.ink,after:70})
       ];
-      m.items.forEach(it=>kids.push(bullet(it,{size:17.2,after:25,line:236})));
+      m.items.forEach(it=>kids.push(bullet(it,{size:19.0,after:34,line:252})));
       return cell(kids,{width:wide?100:50,fill:theme.soft,top:120,bottom:120,left:135,right:135,borders:lightBorders});
     };
     // Rebuild single odd module rows with a true colspan to preserve full width in Word.
@@ -1694,13 +1694,13 @@ app.post('/api/export/docx', async (req,res) => {
           const headFill=idx%2===0?theme.dark:'1499A3';
           const head=table([row([
             cell([paragraph(num,{size:15.5,bold:true,color:'FFFFFF',alignment:AlignmentType.CENTER,after:0})],{width:15,fill:headFill,top:70,bottom:70,left:40,right:40}),
-            cell([paragraph(m.title,{size:17.8,bold:true,color:'FFFFFF',after:0})],{width:85,fill:headFill,top:70,bottom:70,left:90,right:90})
+            cell([paragraph(m.title,{size:19.2,bold:true,color:'FFFFFF',after:0})],{width:85,fill:headFill,top:70,bottom:70,left:90,right:90})
           ])],[1500,8500]);
-          const body=[];m.items.forEach(it=>body.push(bullet(it,{size:17.2,after:25,line:236})));
+          const body=[];m.items.forEach(it=>body.push(bullet(it,{size:19.0,after:34,line:252})));
           normalizedModuleRows.push(row([cell([head,...body],{columnSpan:2,fill:'FFFFFF',top:0,bottom:100,left:0,right:0,borders:lightBorders})]));
         } else {
-          const kids=[paragraph(num,{size:16,bold:true,color:theme.accent,after:55}),paragraph(m.title,{size:18.5,bold:true,color:theme.ink,after:60})];
-          m.items.forEach(it=>kids.push(bullet(it,{size:17.2,after:25,line:236})));
+          const kids=[paragraph(num,{size:16,bold:true,color:theme.accent,after:55}),paragraph(m.title,{size:20.0,bold:true,color:theme.ink,after:70})];
+          m.items.forEach(it=>kids.push(bullet(it,{size:19.0,after:34,line:252})));
           normalizedModuleRows.push(row([cell(kids,{columnSpan:2,fill:theme.soft,top:120,bottom:120,left:135,right:135,borders:lightBorders})]));
         }
       } else {
@@ -1710,11 +1710,17 @@ app.post('/api/export/docx', async (req,res) => {
     const modulesTable=table(normalizedModuleRows,[5000,5000]);
 
     const investRows=[];
-    (p.concepts||[]).forEach(c=>investRows.push(row([
-      cell([paragraph(c.service||p.title||'Servicio DEX',{size:18,bold:true,color:'FFFFFF',after:35}),paragraph(c.duration||p.durationTotal||'',{size:16,color:'FFFFFF',after:0})],{width:46,fill:theme.dark,top:120,bottom:120,left:150,right:130}),
-      cell([paragraph('Subtotal',{size:15,color:'D9ECE6',after:30}),paragraph(`IVA ${Number(p.iva??16)}%`,{size:15,color:'D9ECE6',after:30}),paragraph('Total con IVA',{size:20,bold:true,color:'FFFFFF',after:0})],{width:24,fill:theme.dark,top:120,bottom:120,left:100,right:70}),
-      cell([paragraph(moneyText(totals.afterDiscount),{size:17,bold:true,color:'FFFFFF',alignment:AlignmentType.RIGHT,after:30}),paragraph(moneyText(totals.iva),{size:17,bold:true,color:'FFFFFF',alignment:AlignmentType.RIGHT,after:30}),paragraph(moneyText(totals.total),{size:23,bold:true,color:'FFFFFF',alignment:AlignmentType.RIGHT,after:0})],{width:30,fill:theme.dark,top:120,bottom:120,left:70,right:150})
-    ])));
+    (p.concepts||[]).forEach(c=>{
+      const rawService=txt(c.service);
+      const serviceLabel=(!rawService || /^servicio dex$/i.test(rawService)) ? (txt(p.title)||'Servicio DEX') : rawService;
+      let durationLabel=txt(c.duration)||txt(p.durationTotal);
+      if(durationLabel && /^\d+(?:[.,]\d+)?$/.test(durationLabel)) durationLabel += ' horas';
+      investRows.push(row([
+      cell([paragraph(serviceLabel,{size:20,bold:true,color:'FFFFFF',after:42}),paragraph(durationLabel,{size:17.5,color:'FFFFFF',after:0})],{width:46,fill:theme.dark,top:145,bottom:145,left:165,right:135}),
+      cell([paragraph('Subtotal',{size:16.5,color:'D9ECE6',after:34}),paragraph(`IVA ${Number(p.iva??16)}%`,{size:16.5,color:'D9ECE6',after:34}),paragraph('Total con IVA',{size:22,bold:true,color:'FFFFFF',after:0})],{width:24,fill:theme.dark,top:145,bottom:145,left:110,right:75}),
+      cell([paragraph(moneyText(totals.afterDiscount),{size:18.5,bold:true,color:'FFFFFF',alignment:AlignmentType.RIGHT,after:34}),paragraph(moneyText(totals.iva),{size:18.5,bold:true,color:'FFFFFF',alignment:AlignmentType.RIGHT,after:34}),paragraph(moneyText(totals.total),{size:26,bold:true,color:'FFFFFF',alignment:AlignmentType.RIGHT,after:0})],{width:30,fill:theme.dark,top:145,bottom:145,left:75,right:165})
+    ]));
+    });
     if(!investRows.length) investRows.push(row([cell(paragraph('Sin concepto de inversión capturado.',{size:18,color:'FFFFFF'}),{columnSpan:3,fill:theme.dark})]));
     const investTable=table(investRows,[4600,2400,3000]);
 
@@ -1728,17 +1734,17 @@ app.post('/api/export/docx', async (req,res) => {
 
     const contactBox=table([
       row([cell([
-        paragraph('CONTACTO COMERCIAL DEX',{size:15,bold:true,color:'8DE3CF',after:45,allCaps:true}),
-        paragraph('Hablemos de tu proyecto',{size:24,bold:true,color:'FFFFFF',after:45}),
-        paragraph('Estamos listos para revisar fechas, modalidad y alcance.',{size:17,color:'E2F3ED',after:0})
-      ],{columnSpan:2,fill:theme.dark,top:140,bottom:110,left:160,right:160})]),
+        paragraph('CONTACTO COMERCIAL DEX',{size:16.5,bold:true,color:'8DE3CF',after:52,allCaps:true}),
+        paragraph('Hablemos de tu proyecto',{size:27,bold:true,color:'FFFFFF',after:52}),
+        paragraph('Estamos listos para revisar fechas, modalidad y alcance.',{size:18.5,color:'E2F3ED',after:0})
+      ],{columnSpan:2,fill:theme.dark,top:175,bottom:135,left:180,right:180})]),
       row([
-        cell([paragraph('WHATSAPP',{size:13.5,bold:true,color:'8DE3CF',after:25}),paragraph('+52 477 294 4676',{size:17,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:80,bottom:90,left:160,right:100}),
-        cell([paragraph('TELÉFONO',{size:13.5,bold:true,color:'8DE3CF',after:25}),paragraph('+52 477 510 5426',{size:17,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:80,bottom:90,left:100,right:160})
+        cell([paragraph('WHATSAPP',{size:14.5,bold:true,color:'8DE3CF',after:28}),paragraph('+52 477 294 4676',{size:18.5,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:105,bottom:110,left:160,right:100}),
+        cell([paragraph('TELÉFONO',{size:14.5,bold:true,color:'8DE3CF',after:28}),paragraph('+52 477 510 5426',{size:18.5,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:105,bottom:110,left:100,right:160})
       ]),
       row([
-        cell([paragraph('CORREO',{size:13.5,bold:true,color:'8DE3CF',after:25}),paragraph('ventas@dexmexico.com',{size:17,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:80,bottom:100,left:160,right:100}),
-        cell([paragraph('WEB',{size:13.5,bold:true,color:'8DE3CF',after:25}),paragraph('www.dexmexico.com',{size:17,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:80,bottom:100,left:100,right:160})
+        cell([paragraph('CORREO',{size:14.5,bold:true,color:'8DE3CF',after:28}),paragraph('ventas@dexmexico.com',{size:18.5,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:105,bottom:120,left:160,right:100}),
+        cell([paragraph('WEB',{size:14.5,bold:true,color:'8DE3CF',after:28}),paragraph('www.dexmexico.com',{size:18.5,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:105,bottom:120,left:100,right:160})
       ])
     ],[5000,5000]);
 
@@ -1751,7 +1757,7 @@ app.post('/api/export/docx', async (req,res) => {
       if(txt(p.presentation)) children.push(justified(p.presentation,{size:20.5,after:125,line:288}));
       children.push(infoTable,paragraph('',{size:2,after:100}),scopeBox,pageBreak());
     }
-    children.push(heading('CONTENIDO PROGRAMÁTICO',{size:21,after:85}),modulesTable,paragraph('',{size:2,after:110}),investTable,pageBreak());
+    children.push(heading('CONTENIDO PROGRAMÁTICO',{size:22,after:105}),modulesTable,paragraph('',{size:2,after:135}),investTable,pageBreak());
     children.push(considerationBox,paragraph('',{size:2,after:125}),contactBox);
 
     const footerTable = new Table({
@@ -1792,4 +1798,4 @@ app.post('/api/export/docx', async (req,res) => {
 });
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 4.11 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 4.12 en puerto ${PORT}`));
