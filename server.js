@@ -1453,6 +1453,41 @@ app.post('/api/export/docx', async (req,res) => {
     const logoPath = path.join(__dirname,'public','dex-logo-real.png');
     const logoData = fs.existsSync(logoPath) ? fs.readFileSync(logoPath) : null;
 
+    const imageDataInfo = (dataUri='') => {
+      const m = String(dataUri||'').match(/^data:image\/(png|jpe?g);base64,(.+)$/i);
+      if(!m) return null;
+      return { type:/^jpe?g$/i.test(m[1]) ? 'jpg' : 'png', data:Buffer.from(m[2],'base64') };
+    };
+    const imageDims = (buf,type) => {
+      try {
+        if(type==='png' && buf.length>=24 && buf.slice(1,4).toString()==='PNG') {
+          return {width:buf.readUInt32BE(16),height:buf.readUInt32BE(20)};
+        }
+        if(type==='jpg') {
+          let i=2;
+          while(i<buf.length-9){
+            if(buf[i]!==0xFF){ i++; continue; }
+            const marker=buf[i+1];
+            if([0xC0,0xC1,0xC2,0xC3,0xC5,0xC6,0xC7,0xC9,0xCA,0xCB,0xCD,0xCE,0xCF].includes(marker)) {
+              return {height:buf.readUInt16BE(i+5),width:buf.readUInt16BE(i+7)};
+            }
+            const len=buf.readUInt16BE(i+2);
+            if(!len || len<2) break;
+            i += 2 + len;
+          }
+        }
+      } catch(_) {}
+      return null;
+    };
+    const fitImage = (info,maxW,maxH) => {
+      if(!info) return null;
+      const d=imageDims(info.data,info.type);
+      if(!d || !d.width || !d.height) return {width:maxW,height:maxH};
+      const scale=Math.min(maxW/d.width,maxH/d.height);
+      return {width:Math.max(1,Math.round(d.width*scale)),height:Math.max(1,Math.round(d.height*scale))};
+    };
+    const coverInfo = imageDataInfo(p.coverData);
+
     const paragraph = (text, opts={}) => new Paragraph({
       alignment:opts.alignment || AlignmentType.LEFT,
       spacing:{before:opts.before||0,after:opts.after===undefined?100:opts.after,line:opts.line||276},
@@ -1559,16 +1594,41 @@ app.post('/api/export/docx', async (req,res) => {
       return filtered.length?filtered:raw;
     }
 
-    const headerTitle = paragraph('PROPUESTA COMERCIAL DE CAPACITACIÓN',{size:16,bold:true,color:'7DE0CB',after:80,allCaps:true});
-    const heroTitle = paragraph(p.title || 'Propuesta de servicio',{size:31,bold:true,color:'FFFFFF',after:0,line:320});
-    const heroLeft=[headerTitle,heroTitle];
-    const heroRight=[];
-    if(logoData) heroRight.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:0},children:[new ImageRun({data:logoData,transformation:{width:68,height:68}})]}));
-    else heroRight.push(paragraph('DEX',{size:24,bold:true,color:'FFFFFF',alignment:AlignmentType.CENTER,after:0}));
-    const hero = table([row([
-      cell(heroLeft,{width:78,fill:theme.dark,top:220,bottom:220,left:230,right:150}),
-      cell(heroRight,{width:22,fill:theme.dark,top:180,bottom:180,left:80,right:120})
-    ])],[7800,2200]);
+    let hero;
+    if(template==='C') {
+      const coverChildren=[];
+      if(coverInfo){
+        const dim=fitImage(coverInfo,250,165);
+        coverChildren.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[
+          new ImageRun({data:coverInfo.data,type:coverInfo.type,transformation:dim})
+        ]}));
+      } else {
+        coverChildren.push(paragraph('ESPACIO PARA IMAGEN',{size:18,bold:true,color:'6F6654',alignment:AlignmentType.CENTER,after:45}));
+        coverChildren.push(paragraph('La imagen cargada se acomoda automáticamente.',{size:14.5,color:'7D7463',alignment:AlignmentType.CENTER,after:0}));
+      }
+      const left=[];
+      if(logoData) left.push(new Paragraph({alignment:AlignmentType.LEFT,spacing:{after:110},children:[new ImageRun({data:logoData,type:'png',transformation:{width:54,height:54}})]}));
+      left.push(paragraph('PROPUESTA DE CAPACITACIÓN',{size:15.5,bold:true,color:'D7B35A',after:70,allCaps:true}));
+      left.push(paragraph(p.title || 'Propuesta de servicio',{size:30,bold:true,color:'FFFFFF',after:0,line:315}));
+      hero=table([row([
+        cell(left,{width:52,fill:theme.dark,top:175,bottom:175,left:210,right:150}),
+        cell(coverChildren,{width:48,fill:'F4E8CF',top:150,bottom:150,left:120,right:120,borders:lightBorders})
+      ])],[5200,4800]);
+    } else {
+      const kicker = template==='B' ? 'DEX MÉXICO / PROPUESTA COMERCIAL' : 'PROPUESTA COMERCIAL DE CAPACITACIÓN';
+      const kickerColor = template==='B' ? '8DE3CF' : '7DE0CB';
+      const heroLeft=[
+        paragraph(kicker,{size:16,bold:true,color:kickerColor,after:80,allCaps:true}),
+        paragraph(p.title || 'Propuesta de servicio',{size:31,bold:true,color:'FFFFFF',after:0,line:320})
+      ];
+      const heroRight=[];
+      if(logoData) heroRight.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:0},children:[new ImageRun({data:logoData,type:'png',transformation:{width:68,height:68}})]}));
+      else heroRight.push(paragraph('DEX',{size:24,bold:true,color:'FFFFFF',alignment:AlignmentType.CENTER,after:0}));
+      hero = table([row([
+        cell(heroLeft,{width:78,fill:theme.dark,top:220,bottom:220,left:230,right:150}),
+        cell(heroRight,{width:22,fill:theme.dark,top:180,bottom:180,left:80,right:120})
+      ])],[7800,2200]);
+    }
 
     const metaValues=[
       ['MODALIDAD',txt(p.modality)||'—'],['DURACIÓN',txt(p.durationTotal)||'—'],['PARTICIPANTES',txt(p.participants)||'—'],['ACREDITACIÓN',txt(p.accreditation)||'—']
@@ -1579,7 +1639,7 @@ app.post('/api/export/docx', async (req,res) => {
     ],{width:25,fill:'FFFFFF',top:105,bottom:105,borders:lightBorders})))],[2500,2500,2500,2500]);
 
     const infoLeft=[];
-    infoLeft.push(heading('OBJETIVO GENERAL',{size:18}));
+    infoLeft.push(heading(template==='C'?'OBJETIVO':'OBJETIVO GENERAL',{size:18}));
     infoLeft.push(justified(objectiveGeneral(p.objectives)||'—',{size:20}));
     infoLeft.push(heading('DIRIGIDO A',{size:18,before:80}));
     infoLeft.push(justified(p.audience||'—',{size:20,after:0}));
@@ -1589,6 +1649,15 @@ app.post('/api/export/docx', async (req,res) => {
       cell(infoRight,{width:45,fill:theme.soft,top:150,bottom:150,left:165,right:165,borders:lightBorders})
     ])],[5500,4500]);
 
+    const modernCard=(titleText,body)=>cell([
+      heading(titleText,{size:17.5,after:55}),
+      justified(body||'—',{size:18.2,after:0,line:258})
+    ],{width:50,fill:theme.soft,top:125,bottom:125,left:145,right:145,borders:lightBorders});
+    const modernGrid=table([
+      row([modernCard('OBJETIVO GENERAL',objectiveGeneral(p.objectives)),modernCard('FUNCIÓN / BENEFICIO',p.benefit)]),
+      row([modernCard('DIRIGIDO A',p.audience),modernCard('PRESENTACIÓN',p.presentation)])
+    ],[5000,5000]);
+
     const scopeCells=scopeItems();
     const scopeParas=[heading('ALCANCE Y ENTREGABLES DEL SERVICIO',{size:18,after:60})];
     scopeCells.forEach(x=>scopeParas.push(bullet(x,{size:18.5,after:35})));
@@ -1596,23 +1665,49 @@ app.post('/api/export/docx', async (req,res) => {
 
     const modules=parseTemario(p.temario);
     const moduleRows=[];
+    const moduleCell=(m,idx,wide=false)=>{
+      const num=String(idx+1).padStart(2,'0');
+      if(template==='A') {
+        const headFill = idx%2===0 ? theme.dark : '1499A3';
+        const head=table([row([
+          cell([paragraph(num,{size:15.5,bold:true,color:'FFFFFF',alignment:AlignmentType.CENTER,after:0})],{width:15,fill:headFill,top:70,bottom:70,left:40,right:40}),
+          cell([paragraph(m.title,{size:17.8,bold:true,color:'FFFFFF',after:0})],{width:85,fill:headFill,top:70,bottom:70,left:90,right:90})
+        ])],[1500,8500]);
+        const body=[];
+        m.items.forEach(it=>body.push(bullet(it,{size:17.2,after:25,line:236})));
+        return cell([head,...body],{width:wide?100:50,fill:'FFFFFF',top:0,bottom:100,left:0,right:0,borders:lightBorders});
+      }
+      const kids=[
+        paragraph(num,{size:16,bold:true,color:theme.accent,after:55,alignment:template==='C'?AlignmentType.CENTER:AlignmentType.LEFT}),
+        paragraph(m.title,{size:18.5,bold:true,color:theme.ink,after:60})
+      ];
+      m.items.forEach(it=>kids.push(bullet(it,{size:17.2,after:25,line:236})));
+      return cell(kids,{width:wide?100:50,fill:theme.soft,top:120,bottom:120,left:135,right:135,borders:lightBorders});
+    };
+    // Rebuild single odd module rows with a true colspan to preserve full width in Word.
+    const normalizedModuleRows=[];
     for(let i=0;i<modules.length;i+=2){
       const pair=modules.slice(i,i+2);
       if(pair.length===1){
-        const m=pair[0];
-        const kids=[paragraph(String(i+1).padStart(2,'0'),{size:16,bold:true,color:theme.accent,after:55}),paragraph(m.title,{size:19,bold:true,color:theme.ink,after:65})];
-        m.items.forEach(it=>kids.push(bullet(it,{size:17.5,after:28,line:238})));
-        moduleRows.push(row([cell(kids,{columnSpan:2,fill:theme.soft,top:120,bottom:120,left:150,right:150,borders:lightBorders})]));
-      } else {
-        const cs=pair.map((m,j)=>{
-          const kids=[paragraph(String(i+j+1).padStart(2,'0'),{size:16,bold:true,color:theme.accent,after:55}),paragraph(m.title,{size:18.5,bold:true,color:theme.ink,after:60})];
+        const m=pair[0], idx=i, num=String(idx+1).padStart(2,'0');
+        if(template==='A') {
+          const headFill=idx%2===0?theme.dark:'1499A3';
+          const head=table([row([
+            cell([paragraph(num,{size:15.5,bold:true,color:'FFFFFF',alignment:AlignmentType.CENTER,after:0})],{width:15,fill:headFill,top:70,bottom:70,left:40,right:40}),
+            cell([paragraph(m.title,{size:17.8,bold:true,color:'FFFFFF',after:0})],{width:85,fill:headFill,top:70,bottom:70,left:90,right:90})
+          ])],[1500,8500]);
+          const body=[];m.items.forEach(it=>body.push(bullet(it,{size:17.2,after:25,line:236})));
+          normalizedModuleRows.push(row([cell([head,...body],{columnSpan:2,fill:'FFFFFF',top:0,bottom:100,left:0,right:0,borders:lightBorders})]));
+        } else {
+          const kids=[paragraph(num,{size:16,bold:true,color:theme.accent,after:55}),paragraph(m.title,{size:18.5,bold:true,color:theme.ink,after:60})];
           m.items.forEach(it=>kids.push(bullet(it,{size:17.2,after:25,line:236})));
-          return cell(kids,{width:50,fill:theme.soft,top:120,bottom:120,left:135,right:135,borders:lightBorders});
-        });
-        moduleRows.push(row(cs));
+          normalizedModuleRows.push(row([cell(kids,{columnSpan:2,fill:theme.soft,top:120,bottom:120,left:135,right:135,borders:lightBorders})]));
+        }
+      } else {
+        normalizedModuleRows.push(row([moduleCell(pair[0],i,false),moduleCell(pair[1],i+1,false)]));
       }
     }
-    const modulesTable=table(moduleRows,[5000,5000]);
+    const modulesTable=table(normalizedModuleRows,[5000,5000]);
 
     const investRows=[];
     (p.concepts||[]).forEach(c=>investRows.push(row([
@@ -1650,8 +1745,12 @@ app.post('/api/export/docx', async (req,res) => {
     const pageBreak=()=>new Paragraph({children:[new PageBreak()]});
     const children=[];
     children.push(hero,paragraph('',{size:2,after:70}),meta,paragraph('',{size:2,after:135}));
-    if(txt(p.presentation)) children.push(justified(p.presentation,{size:20.5,after:125,line:288}));
-    children.push(infoTable,paragraph('',{size:2,after:100}),scopeBox,pageBreak());
+    if(template==='B') {
+      children.push(modernGrid,paragraph('',{size:2,after:100}),scopeBox,pageBreak());
+    } else {
+      if(txt(p.presentation)) children.push(justified(p.presentation,{size:20.5,after:125,line:288}));
+      children.push(infoTable,paragraph('',{size:2,after:100}),scopeBox,pageBreak());
+    }
     children.push(heading('CONTENIDO PROGRAMÁTICO',{size:21,after:85}),modulesTable,paragraph('',{size:2,after:110}),investTable,pageBreak());
     children.push(considerationBox,paragraph('',{size:2,after:125}),contactBox);
 
@@ -1693,4 +1792,4 @@ app.post('/api/export/docx', async (req,res) => {
 });
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 4.9 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 4.11 en puerto ${PORT}`));
