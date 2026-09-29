@@ -460,7 +460,7 @@ function openPrintablePdf(){
     .pdf-print-toolbar{position:sticky;top:0;z-index:20;display:flex;gap:10px;justify-content:center;padding:12px;background:#ffffffee;border-bottom:1px solid #dfe6e3;font-family:Arial,sans-serif}
     .pdf-print-toolbar button{border:0;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer}.pdf-print-toolbar .save{background:#0d6b55;color:#fff}.pdf-print-toolbar .close{background:#eef3f1;color:#173d35}
     .pdf-print-wrap .pv-sheet{width:720px!important;max-width:100%!important;margin:14px auto!important;box-shadow:none!important;overflow:visible!important}
-    @page{size:A4;margin:8mm}
+    @page{size:Letter portrait;margin:8mm}
     @media print{
       *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
       html,body{background:#fff!important}
@@ -468,9 +468,12 @@ function openPrintablePdf(){
       .pdf-print-wrap .pv-sheet{width:100%!important;max-width:none!important;margin:0!important;border:0!important;box-shadow:none!important;overflow:visible!important}
       .pv-meta,.pv-cols,.pv-card-grid,.pv-invest,.pv-b-money,.pv-c-money,.pv-considerations,.pv-contact,.pv-mods>div,.pv-b-mods article,.pv-c-mods article{break-inside:avoid!important;page-break-inside:avoid!important}
       .pv-mods,.pv-b-mods,.pv-c-mods{break-inside:auto!important}
+      .pv-program-section{break-before:page!important;page-break-before:always!important;margin-top:0!important;padding-top:0!important}
+      .pv-program-section>h3{margin-top:0!important;padding-top:0!important}
+      .pv-sheet p,.pv-module-card li,.pv-considerations li{text-align:justify!important;text-align-last:left!important;text-justify:inter-word!important;hyphens:auto!important;-webkit-hyphens:auto!important}
       h1,h2,h3{break-after:avoid!important;page-break-after:avoid!important}
     }
-  </style></head><body><div class="pdf-print-toolbar"><button class="save" onclick="window.print()">Guardar como PDF</button><button class="close" onclick="window.close()">Cerrar</button></div><div class="pdf-print-wrap">${markup}</div><script>
+  </style></head><body><div class="pdf-print-toolbar"><span style="align-self:center;font-weight:700;color:#4f625b">Carta · 8.5 × 11 in</span><button class="save" onclick="window.print()">Guardar como PDF</button><button class="close" onclick="window.close()">Cerrar</button></div><div class="pdf-print-wrap">${markup}</div><script>
     Promise.all(Array.from(document.images).map(img=>img.complete?Promise.resolve():new Promise(r=>{img.onload=r;img.onerror=r;}))).then(()=>setTimeout(()=>{window.focus();window.print();},450));
   <\/script></body></html>`);
   printWindow.document.close();
