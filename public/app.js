@@ -460,20 +460,59 @@ function openPrintablePdf(){
     .pdf-print-toolbar{position:sticky;top:0;z-index:20;display:flex;gap:10px;justify-content:center;padding:12px;background:#ffffffee;border-bottom:1px solid #dfe6e3;font-family:Arial,sans-serif}
     .pdf-print-toolbar button{border:0;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer}.pdf-print-toolbar .save{background:#0d6b55;color:#fff}.pdf-print-toolbar .close{background:#eef3f1;color:#173d35}
     .pdf-print-wrap .pv-sheet{width:720px!important;max-width:100%!important;margin:14px auto!important;box-shadow:none!important;overflow:visible!important}
-    @page{size:Letter portrait;margin:8mm}
+    .pdf-footer-banner{display:none}
+    @page{size:Letter portrait;margin:7mm 8mm 14mm}
     @media print{
       *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
       html,body{background:#fff!important}
       .pdf-print-toolbar{display:none!important}
       .pdf-print-wrap .pv-sheet{width:100%!important;max-width:none!important;margin:0!important;border:0!important;box-shadow:none!important;overflow:visible!important}
-      .pv-meta,.pv-cols,.pv-card-grid,.pv-invest,.pv-b-money,.pv-c-money,.pv-considerations,.pv-contact,.pv-mods>div,.pv-b-mods article,.pv-c-mods article{break-inside:avoid!important;page-break-inside:avoid!important}
-      .pv-mods,.pv-b-mods,.pv-c-mods{break-inside:auto!important}
+
+      /* Pie de página corporativo: se repite en cada hoja Carta. */
+      .pdf-footer-banner{display:flex!important;position:fixed;left:0;right:0;bottom:-10mm;height:8mm;align-items:center;justify-content:space-between;padding:0 7mm;box-sizing:border-box;background:linear-gradient(90deg,#123d53,#16806d);color:#fff;font:700 7.4px/1 Arial,sans-serif;letter-spacing:.06em;text-transform:uppercase;z-index:50}
+      .pdf-footer-banner span:last-child{font-weight:600;letter-spacing:.02em;text-transform:none;opacity:.95}
+
+      /* Mantiene bloques completos sin obligar a mover toda una retícula a otra hoja. */
+      .pv-meta,.pv-cols,.pv-card-grid section,.pv-invest,.pv-b-money,.pv-c-money,.pv-considerations,.pv-contact,.pv-mods>div,.pv-b-mods article,.pv-c-mods article{break-inside:avoid!important;page-break-inside:avoid!important}
+      .pv-card-grid,.pv-mods,.pv-b-mods,.pv-c-mods{break-inside:auto!important;page-break-inside:auto!important}
+
+      /* El temario siempre arranca en la segunda hoja. */
       .pv-program-section{break-before:page!important;page-break-before:always!important;margin-top:0!important;padding-top:0!important}
       .pv-program-section>h3{margin-top:0!important;padding-top:0!important}
-      .pv-sheet p,.pv-module-card li,.pv-considerations li{text-align:justify!important;text-align-last:left!important;text-justify:inter-word!important;hyphens:auto!important;-webkit-hyphens:auto!important}
+
+      /* Tipografía compacta para Carta. Evita que la plantilla B mande todo el contenido previo a la hoja 2. */
+      .pv-sheet p{font-size:10.3px!important;line-height:1.38!important}
+      .pv-sheet h3{font-size:10.3px!important;margin-top:13px!important;margin-bottom:5px!important}
+      .pv-meta{margin-top:12px!important}
+      .pv-meta>div{padding:9px 6px!important}
+      .pv-meta small{font-size:7.8px!important}.pv-meta b{font-size:10.2px!important;margin-top:3px!important}
+
+      .pv-b{padding:18px!important}
+      .pv-b-hero{min-height:184px!important;padding:23px 25px!important;border-radius:22px!important}
+      .pv-b-hero img{width:86px!important;right:25px!important;top:23px!important;padding:11px!important;border-radius:13px!important}
+      .pv-b-hero span{font-size:8.4px!important}
+      .pv-b-hero h1{font-size:27px!important;line-height:1.03!important;margin:26px 0 0!important;max-width:455px!important}
+      .pv-pills{margin-top:16px!important;gap:5px!important}.pv-pills b{font-size:8px!important;padding:5px 9px!important}
+      .pv-b-body{padding:16px 4px 4px!important}
+      .pv-card-grid{gap:8px!important}
+      .pv-card-grid section{padding:10px 11px!important;border-radius:13px!important}
+      .pv-card-grid section p{font-size:9.15px!important;line-height:1.30!important;margin-top:4px!important;margin-bottom:0!important}
+      .pv-card-grid section h3{font-size:8.7px!important;margin:6px 0 4px!important}
+
+      /* A y C se compactan ligeramente para conservar proporciones en Carta. */
+      .pv-a-hero{min-height:188px!important;padding:28px 30px 25px!important}.pv-a-hero h1{font-size:30px!important;margin-top:27px!important}.pv-a-body{padding:20px 28px 24px!important}
+      .pv-c-hero{padding:24px!important;gap:16px!important}.pv-c-copy h1{font-size:29px!important}.pv-c-copy span{margin-top:34px!important}.pv-c-image{min-height:188px!important}.pv-c-body{padding:19px 28px 24px!important}.pv-c-lead{font-size:11px!important}
+
+      .pv-module-card li{font-size:8.9px!important;line-height:1.30!important;margin:3px 0!important}
+      .pv-module-card>b{font-size:9.8px!important;line-height:1.25!important}
+      .pv-considerations{padding:14px 17px!important;margin:17px 0 13px!important}.pv-considerations li{font-size:9.2px!important;line-height:1.34!important}
+      .pv-contact{padding:14px!important;margin-top:14px!important}.pv-contact>div:first-child>b{font-size:16px!important}.pv-contact-grid{margin-top:9px!important}.pv-contact-grid span{padding:8px!important}
+
+      /* Justificación limpia: sin cortes automáticos con guion. */
+      .pv-sheet p,.pv-module-card li,.pv-considerations li{text-align:justify!important;text-align-last:left!important;text-justify:inter-word!important;hyphens:none!important;-webkit-hyphens:none!important}
       h1,h2,h3{break-after:avoid!important;page-break-after:avoid!important}
     }
-  </style></head><body><div class="pdf-print-toolbar"><span style="align-self:center;font-weight:700;color:#4f625b">Carta · 8.5 × 11 in</span><button class="save" onclick="window.print()">Guardar como PDF</button><button class="close" onclick="window.close()">Cerrar</button></div><div class="pdf-print-wrap">${markup}</div><script>
+  </style></head><body><div class="pdf-print-toolbar"><span style="align-self:center;font-weight:700;color:#4f625b">Carta · 8.5 × 11 in</span><button class="save" onclick="window.print()">Guardar como PDF</button><button class="close" onclick="window.close()">Cerrar</button></div><div class="pdf-footer-banner"><span>DEX México · Knowledge &amp; Development</span><span>www.dexmexico.com</span></div><div class="pdf-print-wrap">${markup}</div><script>
     Promise.all(Array.from(document.images).map(img=>img.complete?Promise.resolve():new Promise(r=>{img.onload=r;img.onerror=r;}))).then(()=>setTimeout(()=>{window.focus();window.print();},450));
   <\/script></body></html>`);
   printWindow.document.close();
