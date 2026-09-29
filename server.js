@@ -17,7 +17,8 @@ const {
   ImageRun,
   PageBreak,
   VerticalAlign,
-  Footer
+  Footer,
+  TableLayoutType
 } = require('docx');
 
 const app = express();
@@ -1479,8 +1480,14 @@ app.post('/api/export/docx', async (req,res) => {
       spacing:{after:opts.after===undefined?45:opts.after,line:opts.line||250},
       children:[new TextRun({text:String(text||''),font:FONT,size:opts.size||18.5,color:opts.color||theme.ink})]
     });
+    // Word desktop is stricter than LibreOffice with percentage table widths.
+    // Use fixed DXA widths (twips) throughout the DOCX to avoid Word's
+    // "unreadable content" repair prompt.
+    const CONTENT_WIDTH_DXA = 11120; // Letter 8.5in minus 0.389in margins each side
+    const pctToDxa = (pct) => Math.max(1, Math.round(CONTENT_WIDTH_DXA * Number(pct || 0) / 100));
+    const gridToDxa = (value) => Math.max(1, Math.round(CONTENT_WIDTH_DXA * Number(value || 0) / 10000));
     const cell = (children, opts={}) => new TableCell({
-      width:opts.width ? {size:opts.width,type:WidthType.PERCENTAGE}:undefined,
+      width:opts.width ? {size:pctToDxa(opts.width),type:WidthType.DXA}:undefined,
       columnSpan:opts.columnSpan,
       verticalAlign:VerticalAlign.CENTER,
       margins:{top:opts.top||110,bottom:opts.bottom||110,left:opts.left||130,right:opts.right||130},
@@ -1489,8 +1496,9 @@ app.post('/api/export/docx', async (req,res) => {
       children:Array.isArray(children)?children:[children]
     });
     const table = (rows, widths) => new Table({
-      width:{size:100,type:WidthType.PERCENTAGE},
-      columnWidths:widths,
+      width:{size:CONTENT_WIDTH_DXA,type:WidthType.DXA},
+      layout:TableLayoutType.FIXED,
+      columnWidths:Array.isArray(widths) ? widths.map(gridToDxa) : undefined,
       borders:cellBorders,
       rows
     });
@@ -1538,7 +1546,15 @@ app.post('/api/export/docx', async (req,res) => {
       return items;
     }
     function commercialConsiderations(){
-      const raw=lines(p.considerations || standardConsiderationsServer(p));
+      const participantLabel = txt(p.participants);
+      let raw=lines(p.considerations || standardConsiderationsServer(p));
+      // If the UI only sends the single participant field, don't leave the
+      // legacy "_ a _ participantes" placeholder in the Word export.
+      if (participantLabel) {
+        raw = raw.map(x => /Los precios están dados para un grupo de\s+_\s+a\s+_\s+participantes/i.test(x)
+          ? `Los precios están dados para un grupo de ${participantLabel}.`
+          : x);
+      }
       const filtered=raw.filter(x=>!/(equipo profesional involucrado|material del curso|se entrega\s+dc-3|certificado de participaci[oó]n)/i.test(x));
       return filtered.length?filtered:raw;
     }
@@ -1640,7 +1656,9 @@ app.post('/api/export/docx', async (req,res) => {
     children.push(considerationBox,paragraph('',{size:2,after:125}),contactBox);
 
     const footerTable = new Table({
-      width:{size:100,type:WidthType.PERCENTAGE},
+      width:{size:CONTENT_WIDTH_DXA,type:WidthType.DXA},
+      layout:TableLayoutType.FIXED,
+      columnWidths:[CONTENT_WIDTH_DXA],
       borders:cellBorders,
       rows:[new TableRow({children:[new TableCell({
         shading:{fill:theme.accent},
@@ -1675,4 +1693,4 @@ app.post('/api/export/docx', async (req,res) => {
 });
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 4.8 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 4.9 en puerto ${PORT}`));
