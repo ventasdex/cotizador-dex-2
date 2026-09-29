@@ -13,7 +13,11 @@ const {
   TableCell,
   WidthType,
   AlignmentType,
-  BorderStyle
+  BorderStyle,
+  ImageRun,
+  PageBreak,
+  VerticalAlign,
+  Footer
 } = require('docx');
 
 const app = express();
@@ -1430,51 +1434,245 @@ app.post('/api/export/docx', async (req,res) => {
   try {
     const p = req.body || {};
     const totals = proposalTotals(p);
-    const children = [];
-    children.push(new Paragraph({ text:'DEX México', heading:HeadingLevel.TITLE }));
-    children.push(new Paragraph({ text:'Propuesta comercial', spacing:{after:220} }));
-    children.push(new Paragraph({ text:p.title || 'Propuesta de servicio', heading:HeadingLevel.HEADING_1 }));
-    children.push(new Paragraph({ children:[new TextRun({text:`Cliente: ${p.client || '—'}`,bold:true}), new TextRun(`   Contacto: ${p.contact || '—'}`)] }));
-    children.push(new Paragraph({ text:`Correo: ${p.email || '—'}   |   WhatsApp: ${p.whatsapp || '—'}   |   Vigencia: ${p.validity || '15 días'}` }));
-    children.push(new Paragraph({ text:`Modalidad: ${p.modality || '—'}   |   Duración: ${p.durationTotal || '—'}   |   Participantes: ${p.participants || '—'}   |   Acreditación: ${p.accreditation || '—'}`, spacing:{after:220} }));
-    const addSection = (title, body) => {
-      if (!body) return;
-      children.push(new Paragraph({ text:title, heading:HeadingLevel.HEADING_2 }));
-      String(body).split(/\n/).forEach(line => children.push(new Paragraph({ text:line || ' ' })));
-    };
-    addSection('Presentación', p.presentation);
-    addSection('Objetivos', p.objectives);
-    addSection('Función / beneficio principal', p.benefit);
-    addSection('Dirigido a', p.audience);
-    addSection('Desarrollo del tema', p.temario);
-    addSection('Consideraciones', p.considerations || standardConsiderationsServer(p));
-    addSection('Notas de la propuesta', p.notes);
+    const template = ['A','B','C'].includes(p.template) ? p.template : 'A';
+    const theme = {
+      A:{dark:'123D53',accent:'16806D',soft:'F4F8F6',line:'D8E4DF',ink:'193042',muted:'667C75'},
+      B:{dark:'123D53',accent:'1499A3',soft:'F4F8F8',line:'D9E6E4',ink:'193042',muted:'667C75'},
+      C:{dark:'17493F',accent:'C7A24E',soft:'FBF7ED',line:'E7DDC6',ink:'243832',muted:'776B56'}
+    }[template];
 
-    children.push(new Paragraph({ text:'Inversión', heading:HeadingLevel.HEADING_2 }));
-    const border = { style:BorderStyle.SINGLE, size:1, color:'D6DFDB' };
-    const rows = [new TableRow({ children:['Servicio','Duración','Precio','Importe'].map(x => new TableCell({children:[new Paragraph({children:[new TextRun({text:x,bold:true})]})],borders:{top:border,bottom:border,left:border,right:border}})) })];
-    (p.concepts || []).forEach(c => rows.push(new TableRow({ children:[
-      c.service || '', c.duration || '', money(c.price), money((Number(c.price)||0)*(Number(c.qty)||1))
-    ].map(x => new TableCell({children:[new Paragraph(String(x))],borders:{top:border,bottom:border,left:border,right:border}})) })));
-    children.push(new Table({ width:{size:100,type:WidthType.PERCENTAGE}, rows }));
-    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, spacing:{before:220}, children:[new TextRun(`Subtotal: ${money(totals.afterDiscount)}`)] }));
-    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, text:`Descuento aplicado: ${Number(p.discount)||0}%` }));
-    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, text:`IVA ${Number(p.iva ?? 16)}%: ${money(totals.iva)}` }));
-    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, children:[new TextRun({text:`Total con IVA: ${money(totals.total)}`,bold:true,size:30})] }));
-    children.push(new Paragraph({ alignment:AlignmentType.RIGHT, text:'El importe total mostrado ya incluye el IVA correspondiente.' }));
-    children.push(new Paragraph({ alignment:AlignmentType.CENTER, spacing:{before:400}, text:'DEX México · www.dexmexico.com' }));
+    const FONT = 'Segoe UI';
+    const noBorder = { style:BorderStyle.NONE, size:0, color:'FFFFFF' };
+    const cellBorders = {top:noBorder,bottom:noBorder,left:noBorder,right:noBorder,insideHorizontal:noBorder,insideVertical:noBorder};
+    const lightBorder = { style:BorderStyle.SINGLE, size:4, color:theme.line };
+    const lightBorders = {top:lightBorder,bottom:lightBorder,left:lightBorder,right:lightBorder};
+    const moneyText = (v)=>money(v);
+    const txt = (value='')=>String(value||'').trim();
+    const lines = (value='')=>txt(value).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    const logoPath = path.join(__dirname,'public','dex-logo-real.png');
+    const logoData = fs.existsSync(logoPath) ? fs.readFileSync(logoPath) : null;
 
-    const doc = new Document({ sections:[{ properties:{}, children }] });
+    const paragraph = (text, opts={}) => new Paragraph({
+      alignment:opts.alignment || AlignmentType.LEFT,
+      spacing:{before:opts.before||0,after:opts.after===undefined?100:opts.after,line:opts.line||276},
+      keepNext:!!opts.keepNext,
+      keepLines:!!opts.keepLines,
+      children:[new TextRun({
+        text:String(text||''),
+        font:FONT,
+        size:opts.size||21,
+        bold:!!opts.bold,
+        color:opts.color||theme.ink,
+        allCaps:!!opts.allCaps
+      })]
+    });
+    const heading = (text, opts={}) => paragraph(text,{size:opts.size||20,bold:true,color:opts.color||theme.accent,after:opts.after===undefined?80:opts.after,before:opts.before||0,keepNext:true,allCaps:opts.allCaps!==false});
+    const justified = (text, opts={}) => new Paragraph({
+      alignment:AlignmentType.JUSTIFIED,
+      spacing:{before:opts.before||0,after:opts.after===undefined?95:opts.after,line:opts.line||286},
+      keepLines:true,
+      children:[new TextRun({text:String(text||''),font:FONT,size:opts.size||21,color:opts.color||theme.ink,bold:!!opts.bold})]
+    });
+    const bullet = (text, opts={}) => new Paragraph({
+      bullet:{level:0},
+      alignment:AlignmentType.JUSTIFIED,
+      spacing:{after:opts.after===undefined?45:opts.after,line:opts.line||250},
+      children:[new TextRun({text:String(text||''),font:FONT,size:opts.size||18.5,color:opts.color||theme.ink})]
+    });
+    const cell = (children, opts={}) => new TableCell({
+      width:opts.width ? {size:opts.width,type:WidthType.PERCENTAGE}:undefined,
+      columnSpan:opts.columnSpan,
+      verticalAlign:VerticalAlign.CENTER,
+      margins:{top:opts.top||110,bottom:opts.bottom||110,left:opts.left||130,right:opts.right||130},
+      shading:opts.fill ? {fill:opts.fill}:undefined,
+      borders:opts.borders || cellBorders,
+      children:Array.isArray(children)?children:[children]
+    });
+    const table = (rows, widths) => new Table({
+      width:{size:100,type:WidthType.PERCENTAGE},
+      columnWidths:widths,
+      borders:cellBorders,
+      rows
+    });
+    const row = (cells)=>new TableRow({children:cells,cantSplit:true});
+
+    function objectiveGeneral(value='') {
+      let arr=lines(value).filter(x=>!/^OBJETIVO GENERAL\s*$/i.test(x));
+      const idx=arr.findIndex(x=>/^OBJETIVOS? ESPEC[IÍ]FICOS/i.test(x));
+      if(idx>=0) arr=arr.slice(0,idx);
+      return arr.join(' ').replace(/^[•\-→]\s*/,'').trim();
+    }
+    function parseTemario(value='') {
+      const arr=lines(value);
+      const mods=[];
+      let cur=null;
+      const titleish=(line)=>{
+        if(/^M[ÓO]DULO\b/i.test(line)) return true;
+        if(/^\d+[\.\)]\s+/.test(line) && !/^\d+[\.\)]\s+(?:h|hrs?|horas?)\b/i.test(line)) return true;
+        if(!/^[•\-→]/.test(line) && line.length<=92 && line.split(/\s+/).length>=3 && line.split(/\s+/).length<=12) return true;
+        return false;
+      };
+      for(const raw of arr){
+        const line=raw.trim();
+        if(!line) continue;
+        const bulletLike=/^[•\-→]/.test(line);
+        if(!bulletLike && titleish(line)){
+          if(cur) mods.push(cur);
+          cur={title:line.replace(/^M[ÓO]DULO\s*[IVX\d.:-]*\s*/i,'').replace(/^\d+[\.\)]\s*/,''),items:[]};
+        } else {
+          if(!cur) cur={title:'Contenido programático',items:[]};
+          cur.items.push(line.replace(/^[•\-→]\s*/,''));
+        }
+      }
+      if(cur) mods.push(cur);
+      return mods.filter(m=>m.title || m.items.length);
+    }
+    function scopeItems(){
+      const items=[
+        'Adecuación del contenido, ejemplos y ejercicios a la necesidad planteada por el cliente.',
+        'Impartición por un especialista con experiencia técnica y práctica en el tema.',
+        'Desarrollo de ejercicios, casos o actividades de aplicación durante la capacitación.',
+        'Material de apoyo para consulta y seguimiento de los participantes.'
+      ];
+      if(txt(p.accreditation)) items.push(`Entrega de los documentos de acreditación indicados en la propuesta (${txt(p.accreditation)}).`);
+      return items;
+    }
+    function commercialConsiderations(){
+      const raw=lines(p.considerations || standardConsiderationsServer(p));
+      const filtered=raw.filter(x=>!/(equipo profesional involucrado|material del curso|se entrega\s+dc-3|certificado de participaci[oó]n)/i.test(x));
+      return filtered.length?filtered:raw;
+    }
+
+    const headerTitle = paragraph('PROPUESTA COMERCIAL DE CAPACITACIÓN',{size:16,bold:true,color:'7DE0CB',after:80,allCaps:true});
+    const heroTitle = paragraph(p.title || 'Propuesta de servicio',{size:31,bold:true,color:'FFFFFF',after:0,line:320});
+    const heroLeft=[headerTitle,heroTitle];
+    const heroRight=[];
+    if(logoData) heroRight.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:0},children:[new ImageRun({data:logoData,transformation:{width:68,height:68}})]}));
+    else heroRight.push(paragraph('DEX',{size:24,bold:true,color:'FFFFFF',alignment:AlignmentType.CENTER,after:0}));
+    const hero = table([row([
+      cell(heroLeft,{width:78,fill:theme.dark,top:220,bottom:220,left:230,right:150}),
+      cell(heroRight,{width:22,fill:theme.dark,top:180,bottom:180,left:80,right:120})
+    ])],[7800,2200]);
+
+    const metaValues=[
+      ['MODALIDAD',txt(p.modality)||'—'],['DURACIÓN',txt(p.durationTotal)||'—'],['PARTICIPANTES',txt(p.participants)||'—'],['ACREDITACIÓN',txt(p.accreditation)||'—']
+    ];
+    const meta = table([row(metaValues.map(([k,v])=>cell([
+      paragraph(k,{size:14.5,bold:true,color:theme.muted,alignment:AlignmentType.CENTER,after:35,allCaps:true}),
+      paragraph(v,{size:18,bold:true,color:theme.ink,alignment:AlignmentType.CENTER,after:0})
+    ],{width:25,fill:'FFFFFF',top:105,bottom:105,borders:lightBorders})))],[2500,2500,2500,2500]);
+
+    const infoLeft=[];
+    infoLeft.push(heading('OBJETIVO GENERAL',{size:18}));
+    infoLeft.push(justified(objectiveGeneral(p.objectives)||'—',{size:20}));
+    infoLeft.push(heading('DIRIGIDO A',{size:18,before:80}));
+    infoLeft.push(justified(p.audience||'—',{size:20,after:0}));
+    const infoRight=[heading('FUNCIÓN / BENEFICIO',{size:18}),justified(p.benefit||'—',{size:20,after:0})];
+    const infoTable=table([row([
+      cell(infoLeft,{width:55,fill:'FFFFFF',top:130,bottom:130,left:0,right:160}),
+      cell(infoRight,{width:45,fill:theme.soft,top:150,bottom:150,left:165,right:165,borders:lightBorders})
+    ])],[5500,4500]);
+
+    const scopeCells=scopeItems();
+    const scopeParas=[heading('ALCANCE Y ENTREGABLES DEL SERVICIO',{size:18,after:60})];
+    scopeCells.forEach(x=>scopeParas.push(bullet(x,{size:18.5,after:35})));
+    const scopeBox=table([row([cell(scopeParas,{fill:theme.soft,top:135,bottom:125,left:160,right:160,borders:lightBorders})])],[10000]);
+
+    const modules=parseTemario(p.temario);
+    const moduleRows=[];
+    for(let i=0;i<modules.length;i+=2){
+      const pair=modules.slice(i,i+2);
+      if(pair.length===1){
+        const m=pair[0];
+        const kids=[paragraph(String(i+1).padStart(2,'0'),{size:16,bold:true,color:theme.accent,after:55}),paragraph(m.title,{size:19,bold:true,color:theme.ink,after:65})];
+        m.items.forEach(it=>kids.push(bullet(it,{size:17.5,after:28,line:238})));
+        moduleRows.push(row([cell(kids,{columnSpan:2,fill:theme.soft,top:120,bottom:120,left:150,right:150,borders:lightBorders})]));
+      } else {
+        const cs=pair.map((m,j)=>{
+          const kids=[paragraph(String(i+j+1).padStart(2,'0'),{size:16,bold:true,color:theme.accent,after:55}),paragraph(m.title,{size:18.5,bold:true,color:theme.ink,after:60})];
+          m.items.forEach(it=>kids.push(bullet(it,{size:17.2,after:25,line:236})));
+          return cell(kids,{width:50,fill:theme.soft,top:120,bottom:120,left:135,right:135,borders:lightBorders});
+        });
+        moduleRows.push(row(cs));
+      }
+    }
+    const modulesTable=table(moduleRows,[5000,5000]);
+
+    const investRows=[];
+    (p.concepts||[]).forEach(c=>investRows.push(row([
+      cell([paragraph(c.service||p.title||'Servicio DEX',{size:18,bold:true,color:'FFFFFF',after:35}),paragraph(c.duration||p.durationTotal||'',{size:16,color:'FFFFFF',after:0})],{width:46,fill:theme.dark,top:120,bottom:120,left:150,right:130}),
+      cell([paragraph('Subtotal',{size:15,color:'D9ECE6',after:30}),paragraph(`IVA ${Number(p.iva??16)}%`,{size:15,color:'D9ECE6',after:30}),paragraph('Total con IVA',{size:20,bold:true,color:'FFFFFF',after:0})],{width:24,fill:theme.dark,top:120,bottom:120,left:100,right:70}),
+      cell([paragraph(moneyText(totals.afterDiscount),{size:17,bold:true,color:'FFFFFF',alignment:AlignmentType.RIGHT,after:30}),paragraph(moneyText(totals.iva),{size:17,bold:true,color:'FFFFFF',alignment:AlignmentType.RIGHT,after:30}),paragraph(moneyText(totals.total),{size:23,bold:true,color:'FFFFFF',alignment:AlignmentType.RIGHT,after:0})],{width:30,fill:theme.dark,top:120,bottom:120,left:70,right:150})
+    ])));
+    if(!investRows.length) investRows.push(row([cell(paragraph('Sin concepto de inversión capturado.',{size:18,color:'FFFFFF'}),{columnSpan:3,fill:theme.dark})]));
+    const investTable=table(investRows,[4600,2400,3000]);
+
+    const considerationParas=[heading('CONSIDERACIONES COMERCIALES',{size:19,after:70})];
+    commercialConsiderations().forEach(x=>considerationParas.push(bullet(x,{size:18.5,after:55,line:252})));
+    if(txt(p.notes)){
+      considerationParas.push(heading('NOTAS DE LA PROPUESTA',{size:18,before:100,after:55}));
+      considerationParas.push(justified(p.notes,{size:18.5,after:0}));
+    }
+    const considerationBox=table([row([cell(considerationParas,{fill:'F8FAF9',top:150,bottom:145,left:160,right:160,borders:lightBorders})])],[10000]);
+
+    const contactBox=table([
+      row([cell([
+        paragraph('CONTACTO COMERCIAL DEX',{size:15,bold:true,color:'8DE3CF',after:45,allCaps:true}),
+        paragraph('Hablemos de tu proyecto',{size:24,bold:true,color:'FFFFFF',after:45}),
+        paragraph('Estamos listos para revisar fechas, modalidad y alcance.',{size:17,color:'E2F3ED',after:0})
+      ],{columnSpan:2,fill:theme.dark,top:140,bottom:110,left:160,right:160})]),
+      row([
+        cell([paragraph('WHATSAPP',{size:13.5,bold:true,color:'8DE3CF',after:25}),paragraph('+52 477 294 4676',{size:17,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:80,bottom:90,left:160,right:100}),
+        cell([paragraph('TELÉFONO',{size:13.5,bold:true,color:'8DE3CF',after:25}),paragraph('+52 477 510 5426',{size:17,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:80,bottom:90,left:100,right:160})
+      ]),
+      row([
+        cell([paragraph('CORREO',{size:13.5,bold:true,color:'8DE3CF',after:25}),paragraph('ventas@dexmexico.com',{size:17,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:80,bottom:100,left:160,right:100}),
+        cell([paragraph('WEB',{size:13.5,bold:true,color:'8DE3CF',after:25}),paragraph('www.dexmexico.com',{size:17,bold:true,color:'FFFFFF',after:0})],{width:50,fill:theme.dark,top:80,bottom:100,left:100,right:160})
+      ])
+    ],[5000,5000]);
+
+    const pageBreak=()=>new Paragraph({children:[new PageBreak()]});
+    const children=[];
+    children.push(hero,paragraph('',{size:2,after:70}),meta,paragraph('',{size:2,after:135}));
+    if(txt(p.presentation)) children.push(justified(p.presentation,{size:20.5,after:125,line:288}));
+    children.push(infoTable,paragraph('',{size:2,after:100}),scopeBox,pageBreak());
+    children.push(heading('CONTENIDO PROGRAMÁTICO',{size:21,after:85}),modulesTable,paragraph('',{size:2,after:110}),investTable,pageBreak());
+    children.push(considerationBox,paragraph('',{size:2,after:125}),contactBox);
+
+    const footerTable = new Table({
+      width:{size:100,type:WidthType.PERCENTAGE},
+      borders:cellBorders,
+      rows:[new TableRow({children:[new TableCell({
+        shading:{fill:theme.accent},
+        borders:cellBorders,
+        margins:{top:70,bottom:70,left:130,right:130},
+        children:[new Paragraph({
+          alignment:AlignmentType.CENTER,
+          spacing:{before:0,after:0},
+          children:[new TextRun({text:'DEX MÉXICO · KNOWLEDGE & DEVELOPMENT    |    www.dexmexico.com',font:FONT,size:15,bold:true,color:'FFFFFF'})]
+        })]
+      })]})]
+    });
+
+    const doc = new Document({
+      styles:{default:{document:{run:{font:FONT,size:20,color:theme.ink},paragraph:{spacing:{after:80,line:276}}}}},
+      sections:[{
+        properties:{
+          page:{size:{width:12240,height:15840},margin:{top:520,right:560,bottom:760,left:560,header:240,footer:240}}
+        },
+        footers:{default:new Footer({children:[footerTable]})},
+        children
+      }]
+    });
     const buffer = await Packer.toBuffer(doc);
     res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition',`attachment; filename="Propuesta_DEX_${Date.now()}.docx"`);
+    res.setHeader('Content-Disposition',`attachment; filename="Propuesta_DEX_${template}_${Date.now()}.docx"`);
     res.send(buffer);
   } catch (e) {
     console.error(e);
     res.status(500).json({error:'No fue posible generar el Word.'});
   }
 });
-
 app.get('*', (_req,res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
-app.listen(PORT, () => console.log(`Cotizador DEX 3.8 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Cotizador DEX 4.8 en puerto ${PORT}`));
