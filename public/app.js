@@ -315,7 +315,30 @@ async function openHistory(){
 
 document.querySelector('[data-action="catalog"]').onclick=openCatalog;document.querySelector('[data-action="library"]').onclick=openLibrary;document.querySelector('[data-action="history"]').onclick=openHistory;
 
-$('coverInput').addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{coverData=r.result;$('coverPreview').style.backgroundImage=`url(${coverData})`;$('coverPreview').textContent='';};r.readAsDataURL(f);});
+$('coverInput').addEventListener('change',e=>{
+  const f=e.target.files?.[0];
+  if(!f)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{
+      // Normaliza la imagen a 16:9 para que Vista previa, PDF y Word usen
+      // exactamente el mismo encuadre, sin deformaciones.
+      const W=1200,H=675;
+      const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+      const ctx=canvas.getContext('2d');
+      const scale=Math.max(W/img.width,H/img.height);
+      const sw=W/scale, sh=H/scale, sx=(img.width-sw)/2, sy=(img.height-sh)/2;
+      ctx.drawImage(img,sx,sy,sw,sh,0,0,W,H);
+      coverData=canvas.toDataURL('image/jpeg',0.9);
+      $('coverPreview').style.backgroundImage=`url(${coverData})`;
+      $('coverPreview').textContent='';
+    };
+    img.onerror=()=>toast('No fue posible procesar la imagen de portada.');
+    img.src=reader.result;
+  };
+  reader.readAsDataURL(f);
+});
 
 function nl2br(s=''){ return escapeHtml(s).replace(/\n/g,'<br>'); }
 function cleanPreviewSection(text='',labels=[]){
