@@ -155,3 +155,12 @@
     -webkit-hyphens: auto !important;
   }
 }
+
+/* v4.7 · Alcance y entregables en la primera hoja */
+.pv-scope{margin:18px 0 0;padding:16px 18px;border:1px solid #d9e6e1;border-radius:16px;background:#f7faf9}
+.pv-scope h3{margin:0 0 10px!important;color:#18745f}
+.pv-scope ul{display:grid;grid-template-columns:1fr 1fr;gap:7px 26px;margin:0;padding-left:20px}
+.pv-scope li{font-size:12px;line-height:1.45;margin:0}
+.pv-a .pv-scope{background:#f3fafb;border-color:#cfe1e7}.pv-a .pv-scope h3{color:#1a95a3}
+.pv-c .pv-scope{background:#fffaf0;border-color:#eadfca}.pv-c .pv-scope h3{color:#a17e36}
+@media(max-width:650px){.pv-scope ul{grid-template-columns:1fr}}
