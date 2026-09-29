@@ -321,21 +321,74 @@ document.querySelector('[data-action="catalog"]').onclick=openCatalog;document.q
 $('coverInput').addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{coverData=r.result;$('coverPreview').style.backgroundImage=`url(${coverData})`;$('coverPreview').textContent='';};r.readAsDataURL(f);});
 
 function nl2br(s=''){ return escapeHtml(s).replace(/\n/g,'<br>'); }
+function cleanPreviewSection(text='',labels=[]){
+  const lines=String(text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  if(!lines.length) return '';
+  const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/gi,' ').replace(/\s+/g,' ').trim().toLowerCase();
+  const accepted=labels.map(norm);
+  while(lines.length && accepted.includes(norm(lines[0]))) lines.shift();
+  return lines.join('\n');
+}
+function previewDisplayText(text=''){
+  return String(text||'').replace(/\bSupervison\b/gi,'Supervisión');
+}
 function parsePreviewModules(text=''){
-  const lines=String(text).split(/\r?\n/); const out=[]; let cur=null;
-  const isModuleHeader=(line)=>{
-    const v=String(line||'').replace(/\s+/g,' ').trim();
+  const source=String(text||'').split(/\r?\n/).map(raw=>({raw:String(raw||'').trim()})).filter(x=>x.raw);
+  const out=[]; let cur=null;
+  const stripBullet=line=>String(line||'').replace(/^[\s•→▪◦*\-–—]+/,'').trim();
+  const hasBullet=line=>/^[\s•→▪◦*\-–—]+/.test(String(line||''));
+  const explicitHeader=line=>{
+    const v=stripBullet(line).replace(/\s+/g,' ').trim();
     return /^M[ÓO]DULO\s+(?:[IVXLCDM]+|\d+)\b[\s.::\-–—)]*/i.test(v)
       || /^\d{1,2}\s*[.)\-:]\s+\S+/i.test(v)
       || /^(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\s*[.)\-:]\s+\S+/i.test(v);
   };
-  lines.forEach(raw=>{ const line=raw.trim(); if(!line)return;
-    if(isModuleHeader(line)){ if(cur)out.push(cur); cur={title:line.replace(/^[•→-]\s*/,''),items:[]}; }
-    else if(cur){ cur.items.push(line.replace(/^[-•→]\s*/,'')); }
-    else { if(!out.length) out.push({title:'Contenido programático',items:[]}); out[0].items.push(line.replace(/^[-•→]\s*/,'')); }
+  const titleLike=line=>{
+    const v=stripBullet(line);
+    if(!v || /[.!?;:]$/.test(v)) return false;
+    const words=v.split(/\s+/).filter(Boolean);
+    if(words.length<2 || words.length>9 || v.length>86) return false;
+    const lower=new Set(['de','del','la','las','el','los','y','e','en','para','por','con','a','al']);
+    const important=words.filter(w=>!lower.has(w.toLowerCase()));
+    const capitalized=important.filter(w=>/^[A-ZÁÉÍÓÚÑ0-9]/.test(w));
+    return important.length>0 && capitalized.length/important.length>=0.65;
+  };
+  const isHeaderAt=i=>{
+    const line=source[i]?.raw||'';
+    if(explicitHeader(line)) return true;
+    const next=source[i+1]?.raw||'';
+    if(!next) return false;
+    if(!hasBullet(line) && hasBullet(next) && titleLike(line)) return true;
+    if(hasBullet(line) && hasBullet(next) && titleLike(line)){
+      let followingBullets=0;
+      for(let j=i+1;j<Math.min(source.length,i+5);j++){ if(hasBullet(source[j].raw)) followingBullets++; else break; }
+      return followingBullets>=2;
+    }
+    return false;
+  };
+  source.forEach((entry,i)=>{
+    const line=entry.raw;
+    if(isHeaderAt(i)){
+      if(cur) out.push(cur);
+      cur={title:stripBullet(line).replace(/^M[ÓO]DULO\s+(?:[IVXLCDM]+|\d+)\s*[.::\-–—)]*\s*/i,''),items:[]};
+      return;
+    }
+    const item=stripBullet(line);
+    if(!item) return;
+    if(cur) cur.items.push(item);
+    else {
+      if(!out.length) out.push({title:'Contenido programático',items:[]});
+      out[0].items.push(item);
+    }
   });
-  if(cur)out.push(cur);
-  return out.filter(m=>m.title || m.items.length).slice(0,12);
+  if(cur) out.push(cur);
+  const cleaned=out.filter(m=>m.title || m.items.length).slice(0,12);
+  if(cleaned.length>1 && cleaned[0].title==='Contenido programático' && cleaned[0].items.length===0) cleaned.shift();
+  return cleaned;
+}
+function renderPreviewModules(mods=[],kind='b'){
+  const tag=kind==='a'?'div':'article';
+  return mods.map((m,i)=>`<${tag} class="pv-module-card"><span class="pv-module-no">${String(i+1).padStart(2,'0')}</span><b>${escapeHtml(previewDisplayText(m.title||`Módulo ${i+1}`))}</b><ul>${(m.items||[]).map(x=>`<li>${escapeHtml(previewDisplayText(x))}</li>`).join('')}</ul></${tag}>`).join('');
 }
 function totalCalc(p){const gross=p.concepts.reduce((s,c)=>s+(Number(c.price)||0)*(Number(c.qty)||1),0);const subtotal=gross*(1-(Number(p.discount)||0)/100);const ivaAmount=subtotal*((Number(p.iva)||0)/100);return {gross,subtotal,ivaAmount,total:subtotal+ivaAmount};}
 function previewContact(p,klass=''){
@@ -343,9 +396,9 @@ function previewContact(p,klass=''){
 }
 function previewInvestmentBreakdown(t,p){return `<div class="pv-tax-breakdown"><span>Subtotal <b>${money(t.subtotal)}</b></span><span>IVA ${Number(p.iva)||0}% <b>${money(t.ivaAmount)}</b></span><span class="pv-tax-total">Total con IVA <b>${money(t.total)}</b></span><small>El importe total mostrado ya incluye el IVA correspondiente.</small></div>`;}
 function previewConsiderations(p){const lines=String(p.considerations||'').split(/\r?\n/).filter(Boolean);return `<div class="pv-considerations"><h3>Consideraciones</h3><ul>${lines.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></div>`;}
-function previewA(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-a"><div class="pv-a-hero"><img src="/dex-logo-real.png"><span>PROPUESTA COMERCIAL DE CAPACITACIÓN</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1></div><div class="pv-meta">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-a-body"><p>${nl2br(p.presentation)}</p><div class="pv-cols"><section><h3>Objetivo general</h3><p>${nl2br(p.objectives)}</p><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><aside><h3>Función / beneficio principal</h3><p>${nl2br(p.benefit)}</p></aside></div><h3>Contenido programático</h3><div class="pv-mods">${mods.map((m,i)=>`<div><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></div>`).join('')}</div><div class="pv-invest"><div><small>INVERSIÓN</small><b>${escapeHtml(p.title||'Servicio DEX')}</b><span>${escapeHtml(p.durationTotal||'')}</span></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-a')}</div></div>`;}
-function previewB(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-b"><div class="pv-b-hero"><img src="/dex-logo-real.png"><span>DEX MÉXICO / PROPUESTA COMERCIAL</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1><div class="pv-pills"><b>${escapeHtml(p.modality||'—')}</b><b>${escapeHtml(p.durationTotal||'—')}</b><b>${escapeHtml(p.participants||'—')}</b><b>${escapeHtml(p.accreditation||'—')}</b></div></div><div class="pv-b-body"><div class="pv-card-grid"><section><h3>Objetivo general</h3><p>${nl2br(p.objectives)}</p></section><section><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></section><section><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><section><h3>Presentación</h3><p>${nl2br(p.presentation)}</p></section></div><h3 class="pv-title-green">Contenido programático</h3><div class="pv-b-mods">${mods.map((m,i)=>`<article><span>${String(i+1).padStart(2,'0')}</span><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-b-money"><div><small>SERVICIO COTIZADO</small><b>${escapeHtml(p.title||'Servicio DEX')}</b></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-b')}</div></div>`;}
-function previewC(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-c"><div class="pv-c-hero"><div class="pv-c-copy"><img src="/dex-logo-real.png"><span>PROPUESTA DE CAPACITACIÓN</span><h1>${escapeHtml(p.title||'Propuesta de servicio')}</h1></div><div class="pv-c-image" ${p.coverData?`style="background-image:url('${p.coverData}')"`:''}>${p.coverData?'':'<b>ESPACIO PARA IMAGEN</b><small>La imagen cargada se acomoda automáticamente.</small>'}</div></div><div class="pv-meta pv-meta-c">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-c-body"><p class="pv-c-lead">${nl2br(p.presentation)}</p><div class="pv-cols"><section><h3>Objetivo</h3><p>${nl2br(p.objectives)}</p><h3>Dirigido a</h3><p>${nl2br(p.audience)}</p></section><aside><h3>Función / beneficio</h3><p>${nl2br(p.benefit)}</p></aside></div><h3 class="pv-c-gold">Contenido programático</h3><div class="pv-c-mods">${mods.map(m=>`<article><b>${escapeHtml(m.title)}</b><ul>${m.items.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul></article>`).join('')}</div><div class="pv-c-money"><div><small>INVERSIÓN</small><b>${escapeHtml(p.title||'Servicio DEX')}</b><span>${escapeHtml(p.durationTotal||'')}</span></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-c')}</div></div>`;}
+function previewA(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-a"><div class="pv-a-hero"><img src="/dex-logo-real.png"><span>PROPUESTA COMERCIAL DE CAPACITACIÓN</span><h1>${escapeHtml(previewDisplayText(p.title||'Propuesta de servicio'))}</h1></div><div class="pv-meta">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-a-body"><p>${nl2br(cleanPreviewSection(previewDisplayText(p.presentation),['PRESENTACIÓN','PRESENTACION']))}</p><div class="pv-cols"><section><h3>Objetivo general</h3><p>${nl2br(cleanPreviewSection(previewDisplayText(p.objectives),['OBJETIVO GENERAL','OBJETIVOS','OBJETIVOS ESPECÍFICOS','OBJETIVOS ESPECIFICOS']))}</p><h3>Dirigido a</h3><p>${nl2br(cleanPreviewSection(previewDisplayText(p.audience),['DIRIGIDO A']))}</p></section><aside><h3>Función / beneficio principal</h3><p>${nl2br(cleanPreviewSection(previewDisplayText(p.benefit),['FUNCIÓN / BENEFICIO PRINCIPAL','FUNCION / BENEFICIO PRINCIPAL','FUNCIÓN / BENEFICIO','FUNCION / BENEFICIO']))}</p></aside></div><h3>Contenido programático</h3><div class="pv-mods">${renderPreviewModules(mods,'a')}</div><div class="pv-invest"><div><small>INVERSIÓN</small><b>${escapeHtml(previewDisplayText(p.title||'Servicio DEX'))}</b><span>${escapeHtml(p.durationTotal||'')}</span></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-a')}</div></div>`;}
+function previewB(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-b"><div class="pv-b-hero"><img src="/dex-logo-real.png"><span>DEX MÉXICO / PROPUESTA COMERCIAL</span><h1>${escapeHtml(previewDisplayText(p.title||'Propuesta de servicio'))}</h1><div class="pv-pills"><b>${escapeHtml(p.modality||'—')}</b><b>${escapeHtml(p.durationTotal||'—')}</b><b>${escapeHtml(p.participants||'—')}</b><b>${escapeHtml(p.accreditation||'—')}</b></div></div><div class="pv-b-body"><div class="pv-card-grid"><section><h3>Objetivo general</h3><p>${nl2br(cleanPreviewSection(previewDisplayText(p.objectives),['OBJETIVO GENERAL','OBJETIVOS','OBJETIVOS ESPECÍFICOS','OBJETIVOS ESPECIFICOS']))}</p></section><section><h3>Función / beneficio</h3><p>${nl2br(cleanPreviewSection(previewDisplayText(p.benefit),['FUNCIÓN / BENEFICIO PRINCIPAL','FUNCION / BENEFICIO PRINCIPAL','FUNCIÓN / BENEFICIO','FUNCION / BENEFICIO']))}</p></section><section><h3>Dirigido a</h3><p>${nl2br(cleanPreviewSection(previewDisplayText(p.audience),['DIRIGIDO A']))}</p></section><section><h3>Presentación</h3><p>${nl2br(cleanPreviewSection(previewDisplayText(p.presentation),['PRESENTACIÓN','PRESENTACION']))}</p></section></div><h3 class="pv-title-green">Contenido programático</h3><div class="pv-b-mods">${renderPreviewModules(mods,'b')}</div><div class="pv-b-money"><div><small>SERVICIO COTIZADO</small><b>${escapeHtml(previewDisplayText(p.title||'Servicio DEX'))}</b></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-b')}</div></div>`;}
+function previewC(p){const t=totalCalc(p),mods=parsePreviewModules(p.temario);return `<div class="pv-sheet pv-c"><div class="pv-c-hero"><div class="pv-c-copy"><img src="/dex-logo-real.png"><span>PROPUESTA DE CAPACITACIÓN</span><h1>${escapeHtml(previewDisplayText(p.title||'Propuesta de servicio'))}</h1></div><div class="pv-c-image" ${p.coverData?`style="background-image:url('${p.coverData}')"`:''}>${p.coverData?'':'<b>ESPACIO PARA IMAGEN</b><small>La imagen cargada se acomoda automáticamente.</small>'}</div></div><div class="pv-meta pv-meta-c">${[['Modalidad',p.modality],['Duración',p.durationTotal],['Participantes',p.participants],['Acreditación',p.accreditation]].map(x=>`<div><small>${x[0]}</small><b>${escapeHtml(x[1]||'—')}</b></div>`).join('')}</div><div class="pv-c-body"><p class="pv-c-lead">${nl2br(cleanPreviewSection(previewDisplayText(p.presentation),['PRESENTACIÓN','PRESENTACION']))}</p><div class="pv-cols"><section><h3>Objetivo</h3><p>${nl2br(cleanPreviewSection(previewDisplayText(p.objectives),['OBJETIVO GENERAL','OBJETIVOS','OBJETIVOS ESPECÍFICOS','OBJETIVOS ESPECIFICOS']))}</p><h3>Dirigido a</h3><p>${nl2br(cleanPreviewSection(previewDisplayText(p.audience),['DIRIGIDO A']))}</p></section><aside><h3>Función / beneficio</h3><p>${nl2br(cleanPreviewSection(previewDisplayText(p.benefit),['FUNCIÓN / BENEFICIO PRINCIPAL','FUNCION / BENEFICIO PRINCIPAL','FUNCIÓN / BENEFICIO','FUNCION / BENEFICIO']))}</p></aside></div><h3 class="pv-c-gold">Contenido programático</h3><div class="pv-c-mods">${renderPreviewModules(mods,'c')}</div><div class="pv-c-money"><div><small>INVERSIÓN</small><b>${escapeHtml(previewDisplayText(p.title||'Servicio DEX'))}</b><span>${escapeHtml(p.durationTotal||'')}</span></div>${previewInvestmentBreakdown(t,p)}</div>${previewConsiderations(p)}${previewContact(p,'pv-contact-c')}</div></div>`;}
 function renderSelectedPreview(){ const p=quoteData(); return selectedTemplate==='B'?previewB(p):selectedTemplate==='C'?previewC(p):previewA(p); }
 
 function proposalCompleteness(){
