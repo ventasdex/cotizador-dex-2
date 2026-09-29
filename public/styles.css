@@ -61,3 +61,16 @@
 /* Historial compartido 3.4 */
 .storage-note.storage-warn{background:#fff7e6;border:1px solid #f2c66d;color:#6b4b13}
 .storage-note.storage-error{background:#fff1f1;border:1px solid #e5a1a1;color:#7a2020}
+
+/* DEX 3.9 - temario visual + paridad de impresion */
+.pv-mods>div,.pv-b-mods article,.pv-c-mods article{break-inside:avoid;page-break-inside:avoid}
+.pv-mods>div{border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 5px 16px #0f32520a}
+.pv-mods>div>b{padding:11px 13px!important;line-height:1.35}
+.pv-mods ul,.pv-b-mods ul,.pv-c-mods ul{list-style:none!important;margin-top:9px!important}
+.pv-mods li,.pv-b-mods li,.pv-c-mods li{position:relative;padding-left:15px;line-height:1.45;margin:5px 0}
+.pv-mods li:before,.pv-b-mods li:before,.pv-c-mods li:before{content:'•';position:absolute;left:1px;top:0;font-weight:900}
+.pv-mods li:before{color:#1aa6af}.pv-b-mods li:before{color:#18745f}.pv-c-mods li:before{color:#c49b47}
+.pv-b-mods article{box-shadow:0 5px 16px #1945560a}.pv-b-mods article>b{display:block;line-height:1.35;margin-bottom:2px}
+.pv-c-mods article{background:#fffaf0;border:1px solid #eadfca;border-left:4px solid #c9a458!important;padding:12px 14px!important;border-radius:0 12px 12px 0}
+.pv-c-mods article>b{display:block;line-height:1.35}
+@media print{.pv-sheet{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.pv-mods>div,.pv-b-mods article,.pv-c-mods article,.pv-meta,.pv-cols,.pv-card-grid,.pv-invest,.pv-b-money,.pv-c-money,.pv-considerations,.pv-contact{break-inside:avoid!important;page-break-inside:avoid!important}}

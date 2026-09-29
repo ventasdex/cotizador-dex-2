@@ -323,11 +323,19 @@ $('coverInput').addEventListener('change',e=>{const f=e.target.files?.[0];if(!f)
 function nl2br(s=''){ return escapeHtml(s).replace(/\n/g,'<br>'); }
 function parsePreviewModules(text=''){
   const lines=String(text).split(/\r?\n/); const out=[]; let cur=null;
+  const isModuleHeader=(line)=>{
+    const v=String(line||'').replace(/\s+/g,' ').trim();
+    return /^M[ÓO]DULO\s+(?:[IVXLCDM]+|\d+)\b[\s.::\-–—)]*/i.test(v)
+      || /^\d{1,2}\s*[.)\-:]\s+\S+/i.test(v)
+      || /^(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\s*[.)\-:]\s+\S+/i.test(v);
+  };
   lines.forEach(raw=>{ const line=raw.trim(); if(!line)return;
-    if(/^M[ÓO]DULO\b|^MODULO\b/i.test(line)){ if(cur)out.push(cur); cur={title:line,items:[]}; }
+    if(isModuleHeader(line)){ if(cur)out.push(cur); cur={title:line.replace(/^[•→-]\s*/,''),items:[]}; }
     else if(cur){ cur.items.push(line.replace(/^[-•→]\s*/,'')); }
-    else { if(!out.length) out.push({title:'Contenido',items:[]}); out[0].items.push(line.replace(/^[-•→]\s*/,'')); }
-  }); if(cur)out.push(cur); return out.slice(0,12);
+    else { if(!out.length) out.push({title:'Contenido programático',items:[]}); out[0].items.push(line.replace(/^[-•→]\s*/,'')); }
+  });
+  if(cur)out.push(cur);
+  return out.filter(m=>m.title || m.items.length).slice(0,12);
 }
 function totalCalc(p){const gross=p.concepts.reduce((s,c)=>s+(Number(c.price)||0)*(Number(c.qty)||1),0);const subtotal=gross*(1-(Number(p.discount)||0)/100);const ivaAmount=subtotal*((Number(p.iva)||0)/100);return {gross,subtotal,ivaAmount,total:subtotal+ivaAmount};}
 function previewContact(p,klass=''){
@@ -369,10 +377,37 @@ function showIncompleteProposal(){
   $('returnToEdit').onclick=()=>{ const first=result.missing[0]; hideModal(); if(first?.id && first.id!=='investment' && $(first.id)){ $(first.id).scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>$(first.id).focus(),350); } else if(first?.id==='investment'){ $('addConcept')?.scrollIntoView({behavior:'smooth',block:'center'}); } };
 }
 
-function previewHtml(){return `<div class="preview-shell"><div class="template-toolbar"><div><b>Elige el diseño de la cotización</b><small>La información se acomoda automáticamente al cambiar de plantilla.</small></div><div class="template-switch"><button data-template="A" class="${selectedTemplate==='A'?'active':''}">A · Corporativa</button><button data-template="B" class="${selectedTemplate==='B'?'active':''}">B · Moderna</button><button data-template="C" class="${selectedTemplate==='C'?'active':''}">C · Premium visual</button></div></div><div id="templatePreview">${renderSelectedPreview()}</div><div class="modal-actions preview-actions"><button class="btn btn-primary" id="savePreviewQuote">Guardar cotización</button><button class="btn btn-light" id="pdfBtn">Descargar PDF con este diseño</button><button class="btn btn-light" id="docxBtn">Descargar Word editable</button><button class="btn btn-light" id="backEdit">← Seguir editando</button></div></div>`;}
+function previewHtml(){return `<div class="preview-shell"><div class="template-toolbar"><div><b>Elige el diseño de la cotización</b><small>La información se acomoda automáticamente al cambiar de plantilla.</small></div><div class="template-switch"><button data-template="A" class="${selectedTemplate==='A'?'active':''}">A · Corporativa</button><button data-template="B" class="${selectedTemplate==='B'?'active':''}">B · Moderna</button><button data-template="C" class="${selectedTemplate==='C'?'active':''}">C · Premium visual</button></div></div><div id="templatePreview">${renderSelectedPreview()}</div><div class="modal-actions preview-actions"><button class="btn btn-primary" id="savePreviewQuote">Guardar cotización</button><button class="btn btn-light" id="pdfBtn">Guardar PDF igual a la vista previa</button><button class="btn btn-light" id="docxBtn">Descargar Word editable</button><button class="btn btn-light" id="backEdit">← Seguir editando</button></div></div>`;}
+function openPrintablePdf(){
+  const printWindow=window.open('','_blank');
+  if(!printWindow){ toast('Permite ventanas emergentes para guardar el PDF.'); return; }
+  const markup=renderSelectedPreview();
+  const baseHref=`${location.origin}/`;
+  printWindow.document.open();
+  printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base href="${baseHref}"><title>Propuesta DEX</title><link rel="stylesheet" href="/styles.css"><style>
+    html,body{margin:0!important;padding:0!important;background:#fff!important;color:#193042}
+    .pdf-print-wrap{width:100%;margin:0 auto;background:#fff}
+    .pdf-print-toolbar{position:sticky;top:0;z-index:20;display:flex;gap:10px;justify-content:center;padding:12px;background:#ffffffee;border-bottom:1px solid #dfe6e3;font-family:Arial,sans-serif}
+    .pdf-print-toolbar button{border:0;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer}.pdf-print-toolbar .save{background:#0d6b55;color:#fff}.pdf-print-toolbar .close{background:#eef3f1;color:#173d35}
+    .pdf-print-wrap .pv-sheet{width:720px!important;max-width:100%!important;margin:14px auto!important;box-shadow:none!important;overflow:visible!important}
+    @page{size:A4;margin:8mm}
+    @media print{
+      *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+      html,body{background:#fff!important}
+      .pdf-print-toolbar{display:none!important}
+      .pdf-print-wrap .pv-sheet{width:100%!important;max-width:none!important;margin:0!important;border:0!important;box-shadow:none!important;overflow:visible!important}
+      .pv-meta,.pv-cols,.pv-card-grid,.pv-invest,.pv-b-money,.pv-c-money,.pv-considerations,.pv-contact,.pv-mods>div,.pv-b-mods article,.pv-c-mods article{break-inside:avoid!important;page-break-inside:avoid!important}
+      .pv-mods,.pv-b-mods,.pv-c-mods{break-inside:auto!important}
+      h1,h2,h3{break-after:avoid!important;page-break-after:avoid!important}
+    }
+  </style></head><body><div class="pdf-print-toolbar"><button class="save" onclick="window.print()">Guardar como PDF</button><button class="close" onclick="window.close()">Cerrar</button></div><div class="pdf-print-wrap">${markup}</div><script>
+    Promise.all(Array.from(document.images).map(img=>img.complete?Promise.resolve():new Promise(r=>{img.onload=r;img.onerror=r;}))).then(()=>setTimeout(()=>{window.focus();window.print();},450));
+  <\/script></body></html>`);
+  printWindow.document.close();
+}
 function bindPreviewActions(){
  document.querySelectorAll('[data-template]').forEach(btn=>btn.onclick=()=>{selectedTemplate=btn.dataset.template; body.innerHTML=previewHtml(); bindPreviewActions();});
- $('backEdit').onclick=hideModal; if($('savePreviewQuote')) $('savePreviewQuote').onclick=saveQuoteToHistory; $('pdfBtn').onclick=()=>downloadExport('/api/export/pdf','pdf'); $('docxBtn').onclick=()=>downloadExport('/api/export/docx','docx');
+ $('backEdit').onclick=hideModal; if($('savePreviewQuote')) $('savePreviewQuote').onclick=saveQuoteToHistory; $('pdfBtn').onclick=openPrintablePdf; $('docxBtn').onclick=()=>downloadExport('/api/export/docx','docx');
 }
 function openPreview(){ const check=proposalCompleteness(); if(!check.ok) return showIncompleteProposal(); showModal(previewHtml());bindPreviewActions();}
 $('previewBtn').onclick=openPreview;$('generateBtn').onclick=openPreview;
