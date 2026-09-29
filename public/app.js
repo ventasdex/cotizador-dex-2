@@ -461,7 +461,7 @@ function openPrintablePdf(){
     .pdf-pages{padding:16px 0}
     .pdf-page{width:8.5in;height:11in;margin:0 auto 18px;background:#fff;box-sizing:border-box;padding:.34in .36in .60in;position:relative;overflow:hidden;box-shadow:0 8px 30px #00000014}
     .pdf-page .pv-sheet{width:100%!important;max-width:none!important;margin:0!important;box-shadow:none!important;border:0!important;overflow:visible!important}
-    .pdf-page-footer{position:absolute;left:.36in;right:.36in;bottom:.18in;height:.34in;display:flex;align-items:center;justify-content:space-between;padding:0 .16in;box-sizing:border-box;background:linear-gradient(90deg,#123d53,#16806d);color:#fff;border-radius:6px;font:700 10px/1 "Segoe UI",Arial,sans-serif;letter-spacing:.035em;text-transform:uppercase}
+    .pdf-page-footer{position:absolute;left:.36in;right:.36in;bottom:.17in;height:.46in;display:flex;align-items:center;justify-content:space-between;padding:0 .20in;box-sizing:border-box;background:linear-gradient(90deg,#123d53,#16806d);color:#fff;border-radius:7px;font:700 11.6px/1 "Segoe UI",Arial,sans-serif;letter-spacing:.035em;text-transform:uppercase}
     .pdf-page-footer span:last-child{font-weight:700;letter-spacing:.005em;text-transform:none}
     @page{size:Letter portrait;margin:0}
     @media print{
@@ -473,10 +473,10 @@ function openPrintablePdf(){
       .pdf-page:last-child{break-after:auto!important;page-break-after:auto!important}
 
       /* Tipografía Carta: recupera legibilidad sin volver al tamaño excesivo anterior. */
-      .pv-sheet p{font-size:13.2px!important;line-height:1.42!important}
-      .pv-sheet h3{font-size:11.8px!important;margin-top:13px!important;margin-bottom:6px!important}
+      .pv-sheet p{font-size:14.4px!important;line-height:1.44!important}
+      .pv-sheet h3{font-size:12.7px!important;margin-top:13px!important;margin-bottom:6px!important}
       .pv-meta{margin-top:10px!important}.pv-meta>div{padding:8px 6px!important}
-      .pv-meta small{font-size:8.6px!important}.pv-meta b{font-size:11px!important;margin-top:3px!important}
+      .pv-meta small{font-size:9.1px!important}.pv-meta b{font-size:11.8px!important;margin-top:3px!important}
 
       /* Plantilla B */
       .pv-b{padding:0!important}
@@ -484,32 +484,32 @@ function openPrintablePdf(){
       .pv-b-hero img{width:86px!important;right:25px!important;top:23px!important;padding:11px!important;border-radius:13px!important}
       .pv-b-hero span{font-size:9px!important}
       .pv-b-hero h1{font-size:31px!important;line-height:1.04!important;margin:25px 0 0!important;max-width:470px!important}
-      .pv-pills{margin-top:15px!important;gap:5px!important}.pv-pills b{font-size:8.6px!important;padding:5px 9px!important}
+      .pv-pills{margin-top:15px!important;gap:5px!important}.pv-pills b{font-size:9.1px!important;padding:5px 9px!important}
       .pv-b-body{padding:15px 3px 3px!important}
       .pv-card-grid{gap:9px!important}
       .pv-card-grid section{padding:11px 12px!important;border-radius:13px!important}
-      .pv-card-grid section p{font-size:12.1px!important;line-height:1.38!important;margin-top:4px!important;margin-bottom:0!important}
-      .pv-card-grid section h3{font-size:9.8px!important;margin:5px 0 4px!important}
+      .pv-card-grid section p{font-size:13.2px!important;line-height:1.42!important;margin-top:4px!important;margin-bottom:0!important}
+      .pv-card-grid section h3{font-size:10.6px!important;margin:5px 0 4px!important}
 
       /* Plantillas A y C */
       .pv-a-hero{min-height:188px!important;padding:27px 29px 24px!important}.pv-a-hero h1{font-size:32px!important;margin-top:25px!important}.pv-a-body{padding:18px 27px 21px!important}
-      .pv-c-hero{padding:22px!important;gap:15px!important}.pv-c-copy h1{font-size:31px!important}.pv-c-copy span{margin-top:31px!important}.pv-c-image{min-height:184px!important}.pv-c-body{padding:18px 27px 21px!important}.pv-c-lead{font-size:13px!important;line-height:1.42!important}
+      .pv-c-hero{padding:22px!important;gap:15px!important}.pv-c-copy h1{font-size:31px!important}.pv-c-copy span{margin-top:31px!important}.pv-c-image{min-height:184px!important}.pv-c-body{padding:18px 27px 21px!important}.pv-c-lead{font-size:14.2px!important;line-height:1.44!important}
 
       /* Temario */
       .pv-program-section{margin-top:0!important;padding-top:0!important;break-before:auto!important;page-break-before:auto!important}
-      .pv-program-section>h3{margin-top:0!important;padding-top:0!important;font-size:12.3px!important}
+      .pv-program-section>h3{margin-top:0!important;padding-top:0!important;font-size:13.1px!important}
       .pv-mods,.pv-b-mods,.pv-c-mods{gap:10px!important}
       .pv-module-card{padding:10px 11px!important;break-inside:avoid!important;page-break-inside:avoid!important}
-      .pv-module-card li{font-size:10.7px!important;line-height:1.34!important;margin:3px 0!important}
-      .pv-module-card>b{font-size:11.5px!important;line-height:1.25!important}
-      .pv-module-no{font-size:8.8px!important}
+      .pv-module-card li{font-size:11.8px!important;line-height:1.38!important;margin:3px 0!important}
+      .pv-module-card>b{font-size:12.4px!important;line-height:1.28!important}
+      .pv-module-no{font-size:9.4px!important}
 
       /* Inversión, consideraciones y contacto */
       .pv-invest,.pv-b-money,.pv-c-money{margin-top:13px!important;padding:13px 16px!important}
       .pv-considerations{padding:14px 17px!important;margin:15px 0 12px!important}
-      .pv-considerations h3{font-size:11.7px!important}
-      .pv-considerations li{font-size:10.7px!important;line-height:1.38!important;margin:4px 0!important}
-      .pv-contact{padding:14px!important;margin-top:12px!important}.pv-contact>div:first-child>b{font-size:17px!important}.pv-contact-grid{margin-top:9px!important}.pv-contact-grid span{padding:8px!important}
+      .pv-considerations h3{font-size:12.5px!important}
+      .pv-considerations li{font-size:11.8px!important;line-height:1.42!important;margin:5px 0!important}
+      .pv-contact{padding:15px!important;margin-top:12px!important}.pv-contact>div:first-child>b{font-size:18.5px!important}.pv-contact-grid{margin-top:9px!important}.pv-contact-grid span{padding:9px!important}
 
       /* Texto justificado sin guiones automáticos. */
       .pv-sheet p,.pv-module-card li,.pv-considerations li{text-align:justify!important;text-align-last:left!important;text-justify:inter-word!important;hyphens:none!important;-webkit-hyphens:none!important}
